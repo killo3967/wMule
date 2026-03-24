@@ -1,0 +1,21 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
+    "name": "amule",
+    "version-string": "2.3.3",
+    "description": "aMule - eMule-like client for ed2k and Kademlia networks",
+    "supports": "windows & x64",
+    "dependencies": [
+        "wxwidgets",
+        "boost-asio",
+        "boost-system",
+        "boost-thread",
+        "boost-date-time",
+        "boost-filesystem",
+        "boost-regex",
+        "boost-signals2",
+        "cryptopp",
+        "zlib",
+        "libpng",
+        "libupnp"
+    ]
+}

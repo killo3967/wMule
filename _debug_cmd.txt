@@ -1,0 +1,10 @@
+.symopt-100
+.reload K:\amule\build\src\amule.exe
+.reload
+ln amule+0x18bec6
+ln amule+0x11591a
+ln amule+0xc4ca6
+ln amule+0xc3bb6
+ln amule+0x69e55
+ln amule+0xde6c5
+q

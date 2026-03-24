@@ -1,0 +1,18 @@
+$ErrorActionPreference = 'Continue'
+
+$msvcLib = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\lib\x64"
+$ucrtLib = "C:\Program Files (x86)\Windows Kits\10\lib\10.0.26100.0\ucrt\x64"
+$umLib = "C:\Program Files (x86)\Windows Kits\10\lib\10.0.26100.0\um\x64"
+$msvcBin = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64"
+$vcAux = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build"
+$sdkBin = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64"
+
+$env:Path = "$msvcBin;$vcAux;$sdkBin;$env:Path"
+$env:LIB = "$msvcLib;$ucrtLib;$umLib"
+
+Write-Host "Building aMule..."
+Set-Location K:\amule\build
+
+nmake 2>&1
+
+Write-Host "Build exit code: $LASTEXITCODE"
