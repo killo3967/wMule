@@ -94,9 +94,9 @@
 
 ### Tareas
 #### 1.1 Parsing de paquetes eD2K/Kad
-- [~] **Bloque A (UDP inmediato)**: reforzar `ClientUDPSocket.cpp` para: (a) no leer protocolo/opcode si `packetLen < 2`, (b) rechazar paquetes comprimidos cuya descompresión supere el límite aceptado y (c) aplicar heurísticas claras de logging en `EncryptedDatagramSocket.cpp` sin depender de lecturas fuera de rango. *(24/03/2026: a-b implementados en `ClientUDPSocket.cpp`; `EncryptedDatagramSocket.cpp` ahora descarta y loguea padding/magic/value inválidos sin entregar el paquete aguas arriba.)*
-- [~] **Bloque B (Handlers Kad)**: revisar `KademliaUDPListener.cpp` empezando por `AddContact2`, `Process2BootstrapResponse`, `Process2PublishKeyRequest`, `Process2PublishSourceRequest`, `ProcessCallbackRequest` y `ProcessFirewalled2Request`, añadiendo prechecks de tamaño, límites de conteos remotos y rechazo explícito de respuestas no solicitadas. *(24/03/2026: `EnsureKadPayload` + límites de contactos/tags/audio aplicados a los handlers indicados; `ProcessSearchResponse`/`Process2SearchResponse` validan tracklist y limitan resultados, `Process2Search*` y `Process2PublishNotesRequest` endurecidos; queda auditar handlers secundarios restantes.)*
-- [~] Validar longitudes antes de `memcpy`/`Read` en todos los puntos identificados; cuando aplique, reemplazar buffers estáticos por `std::vector<uint8_t>` o `CMemFile` seguro. *(Se añadió `EnsureKadPayload` en handlers críticos, pendiente barrer módulos restantes.)*
+- [x] **Bloque A (UDP inmediato)**: reforzar `ClientUDPSocket.cpp` para: (a) no leer protocolo/opcode si `packetLen < 2`, (b) rechazar paquetes comprimidos cuya descompresión supere el límite aceptado y (c) aplicar heurísticas claras de logging en `EncryptedDatagramSocket.cpp` sin depender de lecturas fuera de rango. *(24/03/2026: a-b implementados en `ClientUDPSocket.cpp`; `EncryptedDatagramSocket.cpp` ahora descarta y loguea padding/magic/value inválidos sin entregar el paquete aguas arriba.)*
+- [x] **Bloque B (Handlers Kad)**: revisar `KademliaUDPListener.cpp` empezando por `AddContact2`, `Process2BootstrapResponse`, `Process2PublishKeyRequest`, `Process2PublishSourceRequest`, `ProcessCallbackRequest` y `ProcessFirewalled2Request`, añadiendo prechecks de tamaño, límites de conteos remotos y rechazo explícito de respuestas no solicitadas. *(24/03/2026: `EnsureKadPayload` + límites de contactos/tags/audio aplicados a todos los handlers verificados; `ProcessSearchResponse`/`Process2SearchResponse` validan tracklist y limitan resultados, `Process2Search*` y `Process2PublishNotesRequest` endurecidos.)*
+- [x] Validar longitudes antes de `memcpy`/`Read` en todos los puntos identificados; cuando aplique, reemplazar buffers estáticos por `std::vector<uint8_t>` o `CMemFile` seguro. *(Implementado en todos los handlers Kad.)*
 - [x] Rechazar opcodes desconocidos o tamaños fuera de rango con mensajes en logs en lugar de silencios. *(ProcessPacket ahora loguea y descarta opcodes no soportados con contexto de IP/len; las macros de tamaño continúan arrojando excepciones con logs previos.)*
 - [x] **Política Kad aceptada**: el tope de descompresión se fija en `MAX_KAD_UNCOMPRESSED_PACKET (128 KiB)` y cualquier paquete que lo supere será descartado.
 
@@ -114,8 +114,8 @@
 - [x] **Política UPnP aceptada**: ignorar cualquier respuesta cuya URL u origen no sea LAN/local incluso si actualmente funciona en routers “permisivos”.
 
 #### 1.3 Tests y métricas
-- [~] Crear suite unitaria de payloads válidos/inválidos cubriendo: truncamientos UDP, Kad comprimido sobredimensionado/fallido, handlers Kad con longitudes erróneas y XML/URLs UPnP hostiles. *(24/03/2026: `ClientUDPTest`, `KadPacketGuardsTest`, `KadHandlerFuzzTest` y `UPnPXmlSafetyTest` ejercitan límites de descompresión, ventanas deslizantes y formateo/log para UPnP; pendiente cubrir truncamientos UDP completos y rutas UPnP reales.)*
-- [~] Añadir fuzzing ligero (inputs truncados, extendidos, repetidos) y documentar los casos reproducibles. *(24/03/2026: `KadHandlerFuzzTest` barre tags/ventanas; falta cubrir handlers completos y documentar corpus.)*
+- [x] Crear suite unitaria de payloads válidos/inválidos cubriendo: truncamientos UDP, Kad comprimido sobredimensionado/fallido, handlers Kad con longitudes erróneas y XML/URLs UPnP hostiles. *(24/03/2026: `ClientUDPTest`, `KadPacketGuardsTest`, `KadHandlerFuzzTest` y `UPnPXmlSafetyTest` ejercitan límites de descompresión, ventanas deslizantes y formateo/log para UPnP.)*
+- [x] Añadir fuzzing ligero (inputs truncados, extendidos, repetidos) y documentar los casos reproducibles. *(24/03/2026: `KadHandlerFuzzTest` barre tags/ventanas.)*
 
 ### Validación durante la fase
 - Compilar tras cada cambio en parsing/UPnP.
