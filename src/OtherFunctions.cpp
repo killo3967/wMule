@@ -1095,6 +1095,9 @@ void InitCustomLanguages()
 
 void InitLocale(wxLocale& locale, int language)
 {
+	if (language == wxLANGUAGE_UNKNOWN) {
+		language = wxLANGUAGE_DEFAULT;
+	}
 	locale.Init(language, wxLOCALE_LOAD_DEFAULT);
 
 #if defined(__WXMAC__) || defined(__WINDOWS__)
