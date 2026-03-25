@@ -241,4 +241,10 @@ wxString StripSeparators(wxString path, wxString::stripType type);
  */
 wxString JoinPaths(const wxString& path, const wxString& file);
 
+/**
+ * Strips directory information and unsafe characters from a filename received
+ * from an external (potentially hostile) source.
+ */
+CPath SanitizeFileName(const wxString& rawName);
+
 #endif

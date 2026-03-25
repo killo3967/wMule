@@ -238,7 +238,7 @@ CPartFile::CPartFile(const CED2KFileLink* fileLink)
 {
 	Init();
 
-	SetFileName(CPath(fileLink->GetName()));
+	SetFileName(SanitizeFileName(fileLink->GetName()));
 	SetFileSize(fileLink->GetSize());
 	m_abyFileHash = fileLink->GetHashKey();
 
@@ -399,13 +399,13 @@ uint8 CPartFile::LoadPartFile(const CPath& in_directory, const CPath& filename, 
 				(getsizeonly &&
 					(newtag.GetNameID() == FT_FILESIZE ||
 					 newtag.GetNameID() == FT_FILENAME))) {
-				switch(newtag.GetNameID()) {
-					case FT_FILENAME: {
-						if (!GetFileName().IsOk()) {
-							// If it's not empty, we already loaded the unicoded one
-							SetFileName(CPath(newtag.GetStr()));
-						}
-						break;
+					switch(newtag.GetNameID()) {
+						case FT_FILENAME: {
+							if (!GetFileName().IsOk()) {
+								// If it's not empty, we already loaded the unicoded one
+								SetFileName(SanitizeFileName(newtag.GetStr()));
+							}
+							break;
 					}
 					case FT_LASTSEENCOMPLETE: {
 						lastseencomplete = newtag.GetInt();
@@ -2166,7 +2166,7 @@ void CPartFile::CompleteFileEnded(bool errorOccured, const CPath& newname)
 #ifndef AMULE_DAEMON
 		if (thePrefs::ShowNotifications()) {
 			wxNotificationMessage *notification = new wxNotificationMessage ();
-			notification->SetTitle("aMule");
+			notification->SetTitle("wMule");
 			notification->SetMessage(CFormat( _("Finished downloading:\n%s") ) % GetFileName() );
 			notification->SetFlags(wxICON_INFORMATION);
 			notification->Show(7);
@@ -3573,7 +3573,7 @@ CPartFile::CPartFile(const CEC_PartFile_Tag *tag) : CKnownFile(tag)
 {
 	Init();
 
-	SetFileName(CPath(tag->FileName()));
+	SetFileName(SanitizeFileName(tag->FileName()));
 	m_abyFileHash = tag->FileHash();
 	SetFileSize(tag->SizeFull());
 	m_gaplist.Init(GetFileSize(), true);	// Init empty

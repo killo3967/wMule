@@ -154,21 +154,22 @@
 
 ### Tareas
 #### 2.1 Path Traversal & FS Safety
-- [ ] Sanitizar `PartFile.cpp`, `DownloadQueue.cpp`, `clientCreditsList`, etc.
-- [ ] Usar `wxFileName::Normalize(wxPATH_NORM_ALL | wxPATH_NORM_DOTS | wxPATH_NORM_TILDE)` en todas las entradas externas.
-- [ ] Bloquear rutas absolutas externas y `..` explícitos.
+- [ ] Crear helper común (p. ej. `NormalizeSharedPath`) que use `wxFileName::Normalize(wxPATH_NORM_ALL | wxPATH_NORM_DOTS | wxPATH_NORM_TILDE)` y verifique `IsRelative` antes de aceptar rutas externas.
+- [ ] Aplicar el helper a todos los puntos de entrada de paths externos: `PartFile.cpp`, `DownloadQueue.cpp`, `ClientCreditsList.cpp`, `PrefsUnifiedDlg.cpp` (directorios configurables), generación de catálogos (`DirectoryTreeCtrl`, diálogos de rutas) y cualquier uso de `wxFileDialog`/`wxDirDialog` que copie rutas directamente.
+- [ ] Rechazar explícitamente rutas absolutas que salgan de `ConfigDir/Temp/Incoming` y detectar `..` (con log + mensaje al usuario).
+- [ ] Añadir MuleUnit tests (`PathTraversalTest` o similar) que prueben entradas con `..`, rutas UNC, rutas absolutas Windows/Linux y rutas válidas.
 
 #### 2.2 Configuración EC / Remota
-- [ ] Mantener EC desactivado por defecto (`thePrefs::EnableExternalConnections(false)`).
-- [ ] Almacenar contraseñas como hash (PBKDF2/Argon2) o `wxSecretValue`.
-- [ ] Limpiar logs de credenciales/hashes.
-- [ ] Añadir avisos al usuario cuando EC se active manualmente.
+- [x] Mantener EC desactivado por defecto (`thePrefs::EnableExternalConnections(false)`). *(Implementado en `Preferences.cpp`: EC sólo se activa manualmente o desde `ec-config`, y la UI vuelve a desactivar si no hay password.)*
+- [ ] Reemplazar el almacenamiento legacy (`Cfg_Str_Encrypted`/hash MD5) por PBKDF2/Argon2 o `wxSecretValue` persistente.
+- [ ] Limpiar logs de credenciales/hashes y sustituirlos por mensajes neutros (véase `ExternalConn.cpp:496-499`).
+- [ ] Añadir aviso y confirmación explícita cuando EC se active manualmente (Prefs + CLI), registrando quién lo activa y por qué.
 
 #### 2.3 UPnP/Servicios externos
-- [ ] Mantener UPnP habilitado y soportado para conectividad entrante.
-- [ ] Implementar timeouts y retries limitados (con backoff y cancelación en comportamientos anómalos).
-- [ ] Mostrar en UI/logs el estado real del mapeo (éxito/fallo/pendiente).
-- [ ] Proveer fallback claro cuando no se logra el mapping.
+- [ ] Mantener UPnP habilitado y soportado para conectividad entrante **una vez** el build vuelva a enlazar con libupnp (ver incidencia en `docs/BUILD_MEMORY.md`).
+- [x] Implementar timeouts y retries limitados (backoff exponencial en `CUPnPControlPoint::AddPortMappings`).
+- [ ] Mostrar en UI/logs el estado real del mapeo (éxito/fallo/pendiente) y métricas de reintentos.
+- [ ] Proveer fallback claro cuando no se logra el mapping (mensaje y acción en preferencias + log).
 
 ### Validación durante la fase
 - Tests específicos de path traversal y manipulación de rutas.

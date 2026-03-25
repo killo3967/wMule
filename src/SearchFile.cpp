@@ -65,7 +65,7 @@ CSearchFile::CSearchFile(const CMemFile& data, bool optUTF8, wxUIntPtr searchID,
 		CTag tag(data, optUTF8);
 		switch (tag.GetNameID()) {
 			case FT_FILENAME:
-				SetFileName(CPath(tag.GetStr()));
+				SetFileName(SanitizeFileName(tag.GetStr()));
 				break;
 			case FT_FILESIZE:
 				SetFileSize(tag.GetInt());

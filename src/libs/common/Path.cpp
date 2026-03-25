@@ -710,3 +710,43 @@ wxString JoinPaths(const wxString& path, const wxString& file)
 	   + wxFileName::GetPathSeparator()
 	   + StripSeparators(file, wxString::leading);
 }
+
+
+CPath SanitizeFileName(const wxString& rawName)
+{
+	wxFileName fn(rawName);
+	wxString component = fn.GetFullName();
+	if (component.IsEmpty()) {
+		component = rawName;
+	}
+	component.Replace(wxT("/"), wxT("_"));
+	component.Replace(wxT("\\"), wxT("_"));
+	wxString filtered;
+	filtered.reserve(component.Length());
+	for (wxString::const_iterator it = component.begin(); it != component.end(); ++it) {
+		wxChar ch = *it;
+		if (ch < 32) {
+			continue;
+		}
+#ifdef __WINDOWS__
+		switch (ch) {
+			case wxT('"'):
+			case wxT('*'):
+			case wxT('<'):
+			case wxT('>'):
+			case wxT('?'):
+			case wxT('|'):
+			case wxT(':'):
+				filtered += wxT('_');
+				continue;
+			default:
+				break;
+		}
+#endif
+		filtered += ch;
+	}
+	if (filtered.IsEmpty()) {
+		filtered = wxT("unnamed_file");
+	}
+	return CPath(filtered);
+}

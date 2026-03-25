@@ -135,6 +135,25 @@ target_link_libraries (PathTest
 	muleunit
 )
 
+add_executable (PathTraversalTest
+	PathTraversalTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	${CMAKE_SOURCE_DIR}/src/libs/common/Path.cpp
+)
+
+add_test (NAME PathTraversalTest
+	COMMAND PathTraversalTest
+)
+
+target_include_directories (PathTraversalTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries (PathTraversalTest
+	muleunit
+)
+
 add_executable (RangeMapTest
 	RangeMapTest.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
