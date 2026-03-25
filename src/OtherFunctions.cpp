@@ -1109,7 +1109,7 @@ void InitLocale(wxLocale& locale, int language)
 	locale.AddCatalogLookupPathPrefix(wxT("locale"));
 #endif /* (!)(defined(__WXMAC__) || defined(__WINDOWS__)) */
 
-	locale.AddCatalog(wxT(PACKAGE));
+	locale.AddCatalog(wxT("amule"));
 }
 
 
