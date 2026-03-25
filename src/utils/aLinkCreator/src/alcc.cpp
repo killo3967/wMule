@@ -40,7 +40,7 @@ int alcc::OnRun ()
 {
   // Used to tell alcc to use aMule catalog
   m_locale.Init();
-  m_locale.AddCatalog(wxT(PACKAGE));
+  m_locale.AddCatalog(wxT("amule"));
 
   wxLog::DontCreateOnDemand();
   wxLogStderr * stderrLog = new wxLogStderr;

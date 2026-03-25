@@ -747,7 +747,7 @@ public:
 					wxLogNull	logTarget;
 					wxLocale	locale_to_check;
 					InitLocale(locale_to_check, aMuleLanguages[i].id);
-					if (locale_to_check.IsOk() && locale_to_check.IsLoaded(wxT(PACKAGE))) {
+					if (locale_to_check.IsOk() && locale_to_check.IsLoaded(wxT("amule"))) {
 						aMuleLanguages[i].displayname = wxString(wxGetTranslation(aMuleLanguages[i].name)) + wxT(" [") + aMuleLanguages[i].name + wxT("]");
 						aMuleLanguages[i].available = true;
 #if 0
@@ -767,7 +767,7 @@ public:
 			InitLocale(tmpLocale, theApp->m_locale.GetLanguage());
 			FillChoice();
 			if (m_langSelector->GetCount() == 1) {
-				wxMessageBox(_("There are no translations installed for aMule"), _("No languages available"), wxICON_INFORMATION | wxOK);
+				wxMessageBox(_("There are no translations installed for wMule"), _("No languages available"), wxICON_INFORMATION | wxOK);
 			}
 			m_langSelector->SetSelection(m_selection);
 			m_languagesReady = true;
@@ -979,7 +979,7 @@ void CPreferences::BuildItemList( const wxString& appdir )
 	/**
 	 * User settings
 	 **/
-	NewCfgItem(IDC_NICK,		(new Cfg_Str(  wxT("/eMule/Nick"), s_nick, wxT("http://www.aMule.org") )));
+	NewCfgItem(IDC_NICK,		(new Cfg_Str(  wxT("/eMule/Nick"), s_nick, wxT("https://github.com/wMule/wMule") )));
 #ifndef AMULE_DAEMON
 	Cfg_Lang * cfgLang = new Cfg_Lang();
 	s_cfgLang = cfgLang;
@@ -1073,7 +1073,7 @@ void CPreferences::BuildItemList( const wxString& appdir )
 			// There is a built-in possibility for this call to fail, though I can't imagine a reason for that.
 			incpath = appdir + wxT("Incoming");
 		} else {
-			incpath = JoinPaths(incpath, wxT("aMule Downloads"));
+			incpath = JoinPaths(incpath, wxT("wMule Downloads"));
 		}
 	#else
 		wxString incpath = appdir + wxT("Incoming");

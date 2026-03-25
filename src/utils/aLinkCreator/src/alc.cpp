@@ -36,9 +36,9 @@ bool alc::OnInit ()
 {
   // Used to tell alc to use aMule catalog
   m_locale.Init();
-  m_locale.AddCatalog(wxT(PACKAGE));
+  m_locale.AddCatalog(wxT("amule"));
 
-  m_alcFrame = new AlcFrame (_("aLinkCreator, the aMule eD2k link creator"));
+	m_alcFrame = new AlcFrame (_("aLinkCreator, the wMule eD2k link creator"));
   m_alcFrame->Show (true);
   SetTopWindow (m_alcFrame);
   return true;
