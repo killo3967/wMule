@@ -1105,6 +1105,8 @@ void InitLocale(wxLocale& locale, int language)
 	locale.AddCatalogLookupPathPrefix(JoinPaths(wxStandardPaths::Get().GetExecutablePath(), wxT("locale")));
 	locale.AddCatalogLookupPathPrefix(wxStandardPaths::Get().GetExecutablePath());
 	locale.AddCatalogLookupPathPrefix(wxFileName::GetCwd());
+	locale.AddCatalogLookupPathPrefix(wxT("K:/wMule/build/src/Debug/locale"));
+	locale.AddCatalogLookupPathPrefix(wxT("locale"));
 #endif /* (!)(defined(__WXMAC__) || defined(__WINDOWS__)) */
 
 	locale.AddCatalog(wxT(PACKAGE));
