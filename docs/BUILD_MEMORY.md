@@ -143,6 +143,21 @@ No se puede abrir el archivo incluir: 'config.h'
 
 **Solution:** Ensure `${wMule_BINARY_DIR}` is in include paths (fixed by CMakeLists.txt edits above)
 
+### Issue: "There are no translations installed for wMule"
+When opening the language selector, wxWidgets does not find any `.mo` catalogs even though the `.po` files exist.
+
+**Solution:** Compile the `.po` files with `msgfmt` and drop the resulting `amule.mo` files next to the executable:
+
+```bash
+cd K:\wMule
+for %f in (po\*.po) do (
+    set lang=%~nf
+    msgfmt -o build\src\Debug\locale\%lang%\LC_MESSAGES\amule.mo po\%lang%.po
+)
+```
+
+Any `.mo` placed under `wmule.exe` → `locale/<lang>/LC_MESSAGES/amule.mo` will be picked up automatically.
+
 ---
 
 ## Important Paths
