@@ -1102,6 +1102,7 @@ void InitLocale(wxLocale& locale, int language)
 
 #if defined(__WXMAC__) || defined(__WINDOWS__)
 	locale.AddCatalogLookupPathPrefix(JoinPaths(wxStandardPaths::Get().GetDataDir(), wxT("locale")));
+	locale.AddCatalogLookupPathPrefix(JoinPaths(wxStandardPaths::Get().GetExecutablePath(), wxT("locale")));
 	locale.AddCatalogLookupPathPrefix(wxStandardPaths::Get().GetExecutablePath());
 	locale.AddCatalogLookupPathPrefix(wxFileName::GetCwd());
 #endif /* (!)(defined(__WXMAC__) || defined(__WINDOWS__)) */
