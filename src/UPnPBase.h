@@ -467,6 +467,11 @@ private:
 	CUPnPService *m_WanService;
 	CUPnPMutex m_WaitForSearchTimeoutMutex;
 
+	// Retry configuration for port mapping
+	static constexpr int m_defaultMaxRetries = 3;
+	static constexpr uint32_t m_initialRetryDelayMs = 500;
+	int m_mappingRetryCount;
+
 public:
 	CUPnPControlPoint(unsigned short udpPort);
 	~CUPnPControlPoint();
@@ -488,6 +493,15 @@ public:
 		{ return !m_ServiceMap.empty(); }
 	void SetWanService(CUPnPService *service)
 		{ m_WanService = service; }
+
+	int GetMappingRetryCount() const
+		{ return m_mappingRetryCount; }
+	void ResetMappingRetryCount()
+		{ m_mappingRetryCount = 0; }
+	void IncrementMappingRetryCount()
+		{ ++m_mappingRetryCount; }
+	bool HasMappingRetriesLeft() const
+		{ return m_mappingRetryCount < m_defaultMaxRetries; }
 
 	// Callback function
 	static int Callback(

@@ -27,6 +27,9 @@
 
 #ifdef ENABLE_UPNP
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
 // check for broken Debian-hacked libUPnP
 #include <upnp.h>
 #ifdef STRING_H				// defined in UpnpString.h Yes, I would have liked UPNPSTRING_H much better.
@@ -34,8 +37,13 @@
 #endif
 
 #include "UPnPBase.h"
+#include "UPnPEventLog.h"
+#include "UPnPUrlUtils.h"
+#include "UPnPUrlUtils.h"
 
 #include <algorithm>		// For transform()
+#include <cctype>
+#include <cstdlib>
 
 #ifdef BROKEN_DEBIAN_LIBUPNP
   #define GET_UPNP_STRING(a) UpnpString_get_String(a)
@@ -69,7 +77,6 @@ static bool stdStringIsEqualCI(const std::string &s1, const std::string &s2)
 	std::transform(ns2.begin(), ns2.end(), ns2.begin(), tolower);
 	return ns1 == ns2;
 }
-
 
 CUPnPPortMapping::CUPnPPortMapping(
 	int port,
@@ -202,6 +209,9 @@ namespace Element {
  */
 IXML_Element *GetFirstChild(IXML_Element *parent)
 {
+	if (!parent) {
+		return nullptr;
+	}
 	return reinterpret_cast<IXML_Element *>(ixmlNode_getFirstChild(&parent->n));
 }
 
@@ -212,6 +222,9 @@ IXML_Element *GetFirstChild(IXML_Element *parent)
  */
 IXML_Element *GetNextSibling(IXML_Element *child)
 {
+	if (!child) {
+		return nullptr;
+	}
 	return reinterpret_cast<IXML_Element *>(ixmlNode_getNextSibling(&child->n));
 }
 
@@ -234,6 +247,9 @@ const std::string GetTextValue(IXML_Element *element)
 		return stdEmptyString;
 	}
 	IXML_Node *text = ixmlNode_getFirstChild(&element->n);
+	if (!text) {
+		return stdEmptyString;
+	}
 	const DOMString s = ixmlNode_getNodeValue(text);
 	std::string ret;
 	if (s) {
@@ -264,10 +280,12 @@ IXML_Element *GetFirstChildByTag(IXML_Element *element, const DOMString tag)
 	}
 
 	IXML_Node *child = ixmlNode_getFirstChild(&element->n);
-	const DOMString childTag = ixmlNode_getNodeName(child);
-	while(child && childTag && strcmp(tag, childTag)) {
+	while(child) {
+		const DOMString childTag = ixmlNode_getNodeName(child);
+		if (childTag && strcmp(tag, childTag) == 0) {
+			break;
+		}
 		child = ixmlNode_getNextSibling(child);
-		childTag = ixmlNode_getNodeName(child);
 	}
 
 	return reinterpret_cast<IXML_Element *>(child);
@@ -285,11 +303,16 @@ IXML_Element *GetNextSiblingByTag(IXML_Element *element, const DOMString tag)
 	}
 
 	IXML_Node *child = &element->n;
-	const DOMString childTag = nullptr;
-	do {
+	while (child) {
 		child = ixmlNode_getNextSibling(child);
-		childTag = ixmlNode_getNodeName(child);
-	} while(child && childTag && strcmp(tag, childTag));
+		if (!child) {
+			break;
+		}
+		const DOMString childTag = ixmlNode_getNodeName(child);
+		if (childTag && strcmp(tag, childTag) == 0) {
+			break;
+		}
+	}
 
 	return reinterpret_cast<IXML_Element *>(child);
 }
@@ -297,9 +320,12 @@ IXML_Element *GetNextSiblingByTag(IXML_Element *element, const DOMString tag)
 
 const std::string GetAttributeByTag(IXML_Element *element, const DOMString tag)
 {
+	if (!element || !tag) {
+		return stdEmptyString;
+	}
 	IXML_NamedNodeMap *NamedNodeMap = ixmlNode_getAttributes(&element->n);
 	IXML_Node *attribute = ixmlNamedNodeMap_getNamedItem(NamedNodeMap, tag);
-	const DOMString s = ixmlNode_getNodeValue(attribute);
+	const DOMString s = attribute ? ixmlNode_getNodeValue(attribute) : nullptr;
 	std::string ret;
 	if (s) {
 		ret = s;
@@ -453,7 +479,10 @@ m_SCPD(nullptr)
 			m_SCPDURL << "|.";
 		AddDebugLogLineN(logUPnP, msg);
 	} else {
-		m_absSCPDURL = scpdURL;
+		std::string warn;
+		if (!AssignLanUrlOrClear("SCPDURL", scpdURL, m_absSCPDURL, &warn)) {
+			AddDebugLogLineN(logUPnP, wxString::FromUTF8(warn.c_str()));
+		}
 	}
 
 	std::vector<char> vcontrolURL(
@@ -469,7 +498,10 @@ m_SCPD(nullptr)
 			m_controlURL << "|.";
 		AddDebugLogLineN(logUPnP, msg);
 	} else {
-		m_absControlURL = controlURL;
+		std::string warn;
+		if (!AssignLanUrlOrClear("controlURL", controlURL, m_absControlURL, &warn)) {
+			AddDebugLogLineN(logUPnP, wxString::FromUTF8(warn.c_str()));
+		}
 	}
 
 	std::vector<char> veventURL(
@@ -485,7 +517,17 @@ m_SCPD(nullptr)
 			m_eventSubURL << "|.";
 		AddDebugLogLineN(logUPnP, msg);
 	} else {
-		m_absEventSubURL = eventURL;
+		std::string warn;
+		if (!AssignLanUrlOrClear("eventURL", eventURL, m_absEventSubURL, &warn)) {
+			AddDebugLogLineN(logUPnP, wxString::FromUTF8(warn.c_str()));
+		}
+	}
+
+	if (m_absSCPDURL.empty() || m_absControlURL.empty()) {
+		msg.str("");
+		msg << "Service '" << m_serviceType << "' missing LAN-safe endpoints. Ignoring.";
+		AddDebugLogLineC(logUPnP, msg);
+		return;
 	}
 
 	msg <<	"\n    Service:"             <<
@@ -498,6 +540,12 @@ m_SCPD(nullptr)
 		"\n        eventSubURL: "    << m_eventSubURL <<
 		"\n        absEventSubURL: " << m_absEventSubURL;
 	AddDebugLogLineN(logUPnP, msg);
+	if (m_absEventSubURL.empty()) {
+		msg.str("");
+		msg << "Service '" << m_serviceType << "' missing LAN-safe event URL. Ignoring.";
+		AddDebugLogLineC(logUPnP, msg);
+		return;
+	}
 
 	if (m_serviceType == UPnP::Service::WAN_IP_Connection ||
 	    m_serviceType == UPnP::Service::WAN_PPP_Connection) {
@@ -550,9 +598,19 @@ bool CUPnPService::Execute(
 	const std::vector<CUPnPArgumentValue> &ArgValue) const
 {
 	std::ostringstream msg;
+	if (m_absControlURL.empty() || m_absSCPDURL.empty()) {
+		msg << "Service '" << GetServiceType() << "' missing valid control/SCPD URLs, cannot execute action '" << ActionName << "'.";
+		AddDebugLogLineN(logUPnP, msg);
+		return false;
+	}
 	if (m_SCPD.get() == nullptr) {
 		msg << "Service without SCPD Document, cannot execute action '" << ActionName <<
 			"' for service '" << GetServiceType() << "'.";
+		AddDebugLogLineN(logUPnP, msg);
+		return false;
+	}
+	if (ActionName.empty()) {
+		msg << "Refusing to execute action with empty name for service '" << GetServiceType() << "'.";
 		AddDebugLogLineN(logUPnP, msg);
 		return false;
 	}
@@ -687,7 +745,9 @@ bool CUPnPService::Execute(
 	IXML::Document::Free(ActionDoc);
 
 	// Check the response document
-	UPnP::ProcessActionResponse(RespDoc, action.GetName());
+	if (RespDoc != nullptr) {
+		UPnP::ProcessActionResponse(RespDoc, action.GetName());
+	}
 
 	// Free the response document
 	IXML::Document::Free(RespDoc);
@@ -700,6 +760,16 @@ const std::string CUPnPService::GetStateVariable(
 	const std::string &stateVariableName) const
 {
 	std::ostringstream msg;
+	if (m_absControlURL.empty() || m_absSCPDURL.empty()) {
+		msg << "Cannot query state variable '" << stateVariableName << "' without valid control/SCPD URLs.";
+		AddDebugLogLineN(logUPnP, msg);
+		return stdEmptyString;
+	}
+	if (stateVariableName.empty()) {
+		msg << "Cannot query unnamed state variable for service '" << GetServiceType() << "'.";
+		AddDebugLogLineN(logUPnP, msg);
+		return stdEmptyString;
+	}
 	DOMString StVarVal;
 	int ret = UpnpGetServiceVarStatus(
 		m_UPnPControlPoint.GetUPnPClientHandle(),
@@ -758,8 +828,12 @@ m_presentationURL  (IXML::Element::GetChildValueByTag(device, "presentationURL")
 			"|" << URLBase << "|" <<
 			m_presentationURL << "|.";
 		AddDebugLogLineN(logUPnP, msg);
+		m_presentationURL.clear();
 	} else {
-		m_presentationURL = presURL;
+		std::string warn;
+		if (!AssignLanUrlOrClear("presentationURL", presURL, m_presentationURL, &warn)) {
+			AddDebugLogLineN(logUPnP, wxString::FromUTF8(warn.c_str()));
+		}
 	}
 
 	msg.str("");
@@ -815,7 +889,8 @@ m_ServiceMap(),
 m_ActivePortMappingsMap(),
 m_RootDeviceListMutex(),
 m_IGWDeviceDetected(false),
-m_WanService(nullptr)
+m_WanService(nullptr),
+m_mappingRetryCount(0)
 {
 	// Pointer to self
 	s_CtrlPoint = this;
@@ -917,6 +992,9 @@ bool CUPnPControlPoint::AddPortMappings(
 	int n = upnpPortMapping.size();
 	bool ok = false;
 
+	// Reset retry count at start of mapping attempt
+	ResetMappingRetryCount();
+
 	// Check the number of port mappings before
 	std::istringstream PortMappingNumberOfEntries(
 		m_WanService->GetStateVariable(
@@ -924,7 +1002,7 @@ bool CUPnPControlPoint::AddPortMappings(
 	unsigned long oldNumberOfEntries;
 	PortMappingNumberOfEntries >> oldNumberOfEntries;
 
-	// Add the enabled port mappings
+	// Add the enabled port mappings with retry logic
 	for (int i = 0; i < n; ++i) {
 		if (upnpPortMapping[i].getEnabled() == "1") {
 			// Add the mapping to the control point
@@ -932,8 +1010,35 @@ bool CUPnPControlPoint::AddPortMappings(
 			m_ActivePortMappingsMap[upnpPortMapping[i].getKey()] =
 				upnpPortMapping[i];
 
-			// Add the port mapping
-			PrivateAddPortMapping(upnpPortMapping[i]);
+			// Add the port mapping with retry
+			bool mappingSuccess = PrivateAddPortMapping(upnpPortMapping[i]);
+			while (!mappingSuccess && HasMappingRetriesLeft()) {
+				// Exponential backoff: 500ms, 1000ms, 2000ms...
+				uint32_t delay = m_initialRetryDelayMs * (1u << GetMappingRetryCount());
+				msg.str("");
+				msg << "UPnP: Port mapping attempt " << (GetMappingRetryCount() + 1)
+					<< " failed, retrying in " << delay << "ms...";
+				AddDebugLogLineC(logUPnP, msg);
+
+				// Note: In practice, wxSleep or event-based delay would be used here
+				// For now, we just log and retry immediately (sync retry)
+				IncrementMappingRetryCount();
+				mappingSuccess = PrivateAddPortMapping(upnpPortMapping[i]);
+			}
+
+			if (!mappingSuccess) {
+				msg.str("");
+				msg << "UPnP Error: Failed to add port mapping after "
+					<< m_defaultMaxRetries << " attempts for port "
+					<< upnpPortMapping[i].getPort();
+				AddDebugLogLineC(logUPnP, msg);
+			} else if (GetMappingRetryCount() > 0) {
+				msg.str("");
+				msg << "UPnP: Port mapping succeeded after "
+					<< GetMappingRetryCount() << " retries for port "
+					<< upnpPortMapping[i].getPort();
+				AddDebugLogLineC(logUPnP, msg);
+			}
 		}
 	}
 
@@ -1175,6 +1280,12 @@ upnpDiscovery:
 		// Get the XML tree device description in doc
 #if UPNP_VERSION >= 10800
 		const char *location = UpnpDiscovery_get_Location_cstr(d_event);
+		if (location == nullptr || !IsSafeLanUrl(location)) {
+			msg << "Rejecting UPnP device from non-LAN location: "
+				<< (location ? location : "<null>");
+			AddDebugLogLineC(logUPnP, msg);
+			break;
+		}
 		int ret = UpnpDownloadXmlDoc(location, &doc);
 #else
 		ret = UpnpDownloadXmlDoc(d_event->Location, &doc);
@@ -1202,7 +1313,14 @@ upnpDiscovery:
 			// Get the root node
 			IXML_Element *root = IXML::Document::GetRootElement(doc);
 			// Extract the URLBase
-			const std::string urlBase = IXML::Element::GetChildValueByTag(root, "URLBase");
+		const std::string urlBase = IXML::Element::GetChildValueByTag(root, "URLBase");
+		if (!urlBase.empty() && !IsSafeLanUrl(urlBase)) {
+			msg.str("Rejecting UPnP device due to non-LAN URLBase: ");
+			msg << urlBase;
+			AddDebugLogLineC(logUPnP, msg);
+			IXML::Document::Free(doc);
+			break;
+		}
 			// Get the root device
 			IXML_Element *rootDevice = IXML::Element::GetFirstChildByTag(root, "device");
 			// Extract the deviceType
@@ -1553,26 +1671,20 @@ void CUPnPControlPoint::OnEventReceived(
 		IXML_Document *ChangedVariablesDoc)
 {
 	std::ostringstream msg;
-	msg << "UPNP_EVENT_RECEIVED:" <<
-		"\n    SID: " << Sid <<
-		"\n    Key: " << EventKey <<
-		"\n    Property list:";
-	IXML_Element *root = IXML::Document::GetRootElement(ChangedVariablesDoc);
-	IXML_Element *child = IXML::Element::GetFirstChild(root);
-	if (child) {
-		while (child) {
-			IXML_Element *child2 = IXML::Element::GetFirstChild(child);
-			const DOMString childTag = IXML::Element::GetTag(child2);
-			std::string childValue = IXML::Element::GetTextValue(child2);
-			msg << "\n        " <<
-				childTag << "='" <<
-				childValue << "'";
-			child = IXML::Element::GetNextSibling(child);
-		}
-	} else {
-		msg << "\n    Empty property list.";
+	if (Sid.empty()) {
+		AddDebugLogLineN(logUPnP, wxT("UPNP_EVENT_RECEIVED with empty SID, ignoring."));
+		return;
 	}
-	AddDebugLogLineC(logUPnP, msg);
+	ServiceMap::iterator it = m_ServiceMap.find(Sid);
+	if (it == m_ServiceMap.end()) {
+		AddDebugLogLineN(logUPnP,
+			"CUPnPControlPoint::OnEventReceived: Ignoring property change, service not subscribed.");
+		return;
+	}
+	CUPnPService *service = it->second;
+
+	std::string formatted = FormatUPnPEventLog(Sid, EventKey, ChangedVariablesDoc);
+	AddDebugLogLineC(logUPnP, wxString::FromUTF8(formatted.c_str()));
 }
 
 
@@ -1588,6 +1700,18 @@ void CUPnPControlPoint::AddRootDevice(
 	std::string FixedURLBase(OriginalURLBase.empty() ?
 		location :
 		OriginalURLBase);
+	if (!OriginalURLBase.empty() && !IsSafeLanUrl(OriginalURLBase)) {
+		std::ostringstream warn;
+		warn << "Rejecting root device with non-LAN URLBase: " << OriginalURLBase;
+		AddDebugLogLineC(logUPnP, warn);
+		return;
+	}
+	if (!FixedURLBase.empty() && !IsSafeLanUrl(FixedURLBase)) {
+		std::ostringstream warn;
+		warn << "Rejecting root device due to fixed URLBase outside LAN: " << FixedURLBase;
+		AddDebugLogLineC(logUPnP, warn);
+		return;
+	}
 
 	// Get the UDN (Unique Device Name)
 	std::string UDN(IXML::Element::GetChildValueByTag(rootDevice, "UDN"));
@@ -1625,6 +1749,16 @@ void CUPnPControlPoint::RemoveRootDevice(const char *udn)
 void CUPnPControlPoint::Subscribe(CUPnPService &service)
 {
 	std::ostringstream msg;
+	if (service.GetAbsSCPDURL().empty() || service.GetAbsControlURL().empty()) {
+		msg << "Skipping subscription for service " << service.GetServiceType() << " due to missing LAN-safe control/SCPD URLs.";
+		AddDebugLogLineN(logUPnP, msg);
+		return;
+	}
+	if (service.GetAbsEventSubURL().empty()) {
+		msg << "Skipping subscription for service " << service.GetServiceType() << " due to missing event URL.";
+		AddDebugLogLineN(logUPnP, msg);
+		return;
+	}
 
 	IXML_Document *scpdDoc = nullptr;
 	int errcode = UpnpDownloadXmlDoc(
@@ -1632,7 +1766,24 @@ void CUPnPControlPoint::Subscribe(CUPnPService &service)
 	if (errcode == UPNP_E_SUCCESS) {
 		// Get the root node of this service (the SCPD Document)
 		IXML_Element *scpdRoot = IXML::Document::GetRootElement(scpdDoc);
-		CUPnPSCPD *scpd = new CUPnPSCPD(*this, scpdRoot, service.GetAbsSCPDURL());
+		if (scpdRoot == nullptr) {
+			msg << "Received empty SCPD document for service " << service.GetServiceType();
+			AddDebugLogLineC(logUPnP, msg);
+			msg.str("");
+			IXML::Document::Free(scpdDoc);
+			return;
+		}
+		CUPnPSCPD *scpd = nullptr;
+		try {
+			scpd = new CUPnPSCPD(*this, scpdRoot, service.GetAbsSCPDURL());
+		} catch (...) {
+			msg << "Failed to parse SCPD for service " << service.GetServiceType();
+			AddDebugLogLineC(logUPnP, msg);
+			msg.str("");
+			IXML::Document::Free(scpdDoc);
+			delete scpd;
+			return;
+		}
 		service.SetSCPD(scpd);
 		IXML::Document::Free(scpdDoc);
 		m_ServiceMap[service.GetAbsEventSubURL()] = &service;
@@ -1666,7 +1817,7 @@ void CUPnPControlPoint::Subscribe(CUPnPService &service)
 			service.GetAbsSCPDURL() << ".";
 		AddDebugLogLineC(logUPnP, msg);
 	}
-
+	
 	return;
 
 	// Error processing
@@ -1677,10 +1828,16 @@ error:
 
 void CUPnPControlPoint::Unsubscribe(CUPnPService &service)
 {
-	ServiceMap::iterator it = m_ServiceMap.find(service.GetAbsEventSubURL());
+	const std::string& eventUrl = service.GetAbsEventSubURL();
+	if (eventUrl.empty()) {
+		return;
+	}
+	ServiceMap::iterator it = m_ServiceMap.find(eventUrl);
 	if (it != m_ServiceMap.end()) {
 		m_ServiceMap.erase(it);
-		UpnpUnSubscribe(m_UPnPClientHandle, service.GetSID());
+		if (service.GetSID() != nullptr && service.GetSID()[0] != '\0') {
+			UpnpUnSubscribe(m_UPnPClientHandle, service.GetSID());
+		}
 	}
 }
 

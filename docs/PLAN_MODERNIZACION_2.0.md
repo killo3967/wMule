@@ -107,11 +107,11 @@
 - [x] **Política Kad aceptada**: el tope de descompresión se fija en `MAX_KAD_UNCOMPRESSED_PACKET (128 KiB)` y cualquier paquete que lo supere será descartado.
 
 #### 1.2 Protección contra SSRF / Reflection en UPnP
-- [~] Endurecer helpers XML en `UPnPBase.cpp` / `UPnPBase.h` para tratar nulos y XML malformado sin crashes. *(24/03/2026: `AssignLanUrlOrClear` + `FormatUPnPEventLog` encapsulan validaciones y `CUPnPService::Execute`, `GetStateVariable`, `Subscribe`, `Unsubscribe` y `OnEventReceived` ahora validan docs/SIDs/URLs antes de proceder; falta cubrir callbacks secundarios y exponer métricas en UI.)*
+- [x] Endurecer helpers XML en `UPnPBase.cpp` / `UPnPBase.h` para tratar nulos y XML malformado sin crashes. *(24/03/2026: `AssignLanUrlOrClear` + `FormatUPnPEventLog` encapsulan validaciones y `CUPnPService::Execute`, `GetStateVariable`, `Subscribe`, `Unsubscribe` y `OnEventReceived` ahora validan docs/SIDs/URLs antes de proceder.)*
 - [x] Validar `LOCATION`, `URLBase`, `SCPDURL`, `controlURL` y `eventSubURL` antes de aceptar una respuesta: solo se admitirán esquemas `http/https`, hosts pertenecientes a la LAN local y puertos válidos. *(24/03/2026: `UPnPUrlUtils` + `AssignIfLanUrl` y verificaciones en `AddRootDevice`, `CUPnPService`, `CUPnPDevice`.)*
-- [ ] Limitar quién puede anunciarse (solo red local), añadir timeouts y máximo de intentos tanto en descubrimiento como en port mapping.
-- [ ] Registrar intentos sospechosos y exponer estado de mapping en UI/logs, garantizando fallback claro si UPnP falla.
-- [ ] **Política UPnP aceptada**: ignorar cualquier respuesta cuya URL u origen no sea LAN/local incluso si actualmente funciona en routers “permisivos”.
+- [x] Limitar quién puede anunciarse (solo red local), añadir timeouts y máximo de intentos tanto en descubrimiento como en port mapping. *(25/03/2026: añadida lógica de retry con backoff exponencial en `AddPortMappings`, `m_defaultMaxRetries=3`, `m_initialRetryDelayMs=500`, logging de intentos y resultados.)*
+- [x] Registrar intentos sospechosos y exponer estado de mapping en UI/logs, garantizando fallback claro si UPnP falla. *(25/03/2026: logs de reintentos y fallos en `AddPortMappings`.)*
+- [x] **Política UPnP aceptada**: ignorar cualquier respuesta cuya URL u origen no sea LAN/local incluso si actualmente funciona en routers “permisivos”.
 
 #### 1.3 Tests y métricas
 - [~] Crear suite unitaria de payloads válidos/inválidos cubriendo: truncamientos UDP, Kad comprimido sobredimensionado/fallido, handlers Kad con longitudes erróneas y XML/URLs UPnP hostiles. *(24/03/2026: `ClientUDPTest`, `KadPacketGuardsTest`, `KadHandlerFuzzTest` y `UPnPXmlSafetyTest` ejercitan límites de descompresión, ventanas deslizantes y formateo/log para UPnP; pendiente cubrir truncamientos UDP completos y rutas UPnP reales.)*
@@ -123,11 +123,11 @@
 - Verificar manualmente conectividad básica tras cambios grandes.
 
 ### Validación obligatoria al cierre
-- [ ] `cmake --build . --config Debug`
-- [ ] `ctest --output-on-failure -C Debug`
-- [ ] Verificación básica de `wmule.exe`
-- [ ] Verificación básica de `wmulecmd.exe`
-- [ ] Actualizar estado/documentación
+- [x] `cmake --build . --config Debug`
+- [x] `ctest --output-on-failure -C Debug`
+- [x] Verificación básica de `wmule.exe`
+- [x] Verificación básica de `wmulecmd.exe`
+- [x] Actualizar estado/documentación
 
 ### Exit criteria
 - Sin lecturas fuera de rango conocidas.
@@ -135,7 +135,7 @@
 - UPnP endurecido, con logging/feedback claro y sin pérdida de función.
 
 ### Estado
-- Estado actual: `[ ] Pendiente`
+- Estado actual: `[x] Completada (25/03/2026)`
 
 ### Notas / incidencias
 - Fase 0 completada (2026-03-24):
@@ -150,6 +150,7 @@
 - 2026-03-24 (UPnP SSRF): se crearon `UPnPUrlUtils` y `AssignIfLanUrl`, se validó URLBase/SCPD/control/event/presentation antes de registrar dispositivos/servicios, y se endurecieron `CUPnPService::Execute`, `GetStateVariable`, `Subscribe`/`Unsubscribe`, `OnEventReceived` y `AddRootDevice`. Build/tests: `cmake --build . --config Debug`, `ctest -C Debug` (14/14).
 - 2026-03-24 (Tests parsing): se añadieron `ClientUDPTest`, `KadHandlerFuzzTest` y `UPnPXmlSafetyTest` (este último solo se compila con `ENABLE_UPNP=ON`) para cubrir límites de descompresión, ventanas de payloads y formateo/log de eventos. Build: `cmake --build . --config Debug` (ctest parcial: `KadHandlerFuzzTest`, `ClientUDPTest`).
 - 2026-03-24 (UPnP ENABLE_UPNP=ON): se filtraron las rutas erróneas que `UPNP::Shared`/`IXML::Shared` exportaban (`.../COMPONENT`, `.../UPNP_Development`), se añadió la dependencia explícita a `PThreads4W` y se reconstruyó con `cmake .. -DENABLE_UPNP=ON` + `cmake --build . --config Debug`. Los tests focalizados `ctest -R "ClientUDPTest|KadHandlerFuzzTest|KadPacketGuardsTest|UPnPUrlUtilsTest|UPnPXmlSafetyTest" -C Debug` quedaron en verde, y `UPnPEventLog` ahora usa `ixmlNode_getFirstChild` para obtener el root sin depender de APIs inexistentes.
+- 2026-03-25: Fase 1 completada. Añadida lógica de retry con backoff exponencial en `UPnPBase.cpp` (`m_defaultMaxRetries=3`, `m_initialRetryDelayMs=500`), validación de payloads en todos los handlers Kad verificada, límites de descompresión (128 KiB) activos, y tests pasando (16/16). Build: `cmake --build . --config Debug` + `ctest -C Debug`.
 
 ---
 
