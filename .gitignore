@@ -3,6 +3,7 @@ build/
 build-ninja/
 Testing/
 TEMP/
+vcpkg_installed/
 
 # Tool caches
 .cache/
@@ -18,6 +19,7 @@ TEMP/
 *.i
 *.idb
 *.obj
+*.ilk
 *.pch
 *.suo
 *.user
@@ -35,3 +37,9 @@ TEMP/
 
 # Misc
 nul
+
+# Agent / session temporaries
+session-*.md
+.atl/cache/
+.atl/tmp/
+.atl/logs/
