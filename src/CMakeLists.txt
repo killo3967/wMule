@@ -303,7 +303,12 @@ if (NEED_LIB_MULEAPPCORE)
 		TerminationProcessAmuleweb.cpp
 		ThreadScheduler.cpp
 		UPnPBase.cpp
+		UPnPUrlUtils.cpp
 	)
+
+	if (ENABLE_UPNP)
+		target_sources (muleappcore PRIVATE UPnPEventLog.cpp)
+	endif()
 
 	target_compile_definitions (muleappcore
 		PRIVATE wxUSE_GUI=0

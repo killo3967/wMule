@@ -30,6 +30,7 @@
 #include <tags/FileTags.h>
 
 #include <wx/utils.h>
+#include <wx/filename.h>
 
 #include "Packet.h"		// Needed for CPacket
 #include "MemFile.h"		// Needed for CMemFile
@@ -45,6 +46,7 @@
 #include "Logger.h"
 #include <common/Format.h>
 #include <common/FileFunctions.h>
+#include <common/Path.h> // Needed for NormalizeRenameTarget
 #include "GuiEvents.h"		// Needed for Notify_*
 #include "SHAHashSet.h"		// Needed for CAICHHash
 
@@ -339,13 +341,34 @@ void CSharedFileList::FindSharedFiles()
 	std::list<CPath> sharedPaths;
 
 	// Global incoming dir and all category incoming directories are automatically shared.
-	sharedPaths.push_back(thePrefs::GetIncomingDir());
+	CPath incomingDir = thePrefs::GetIncomingDir();
+	if (IsValidSharedPath(incomingDir)) {
+		sharedPaths.push_back(incomingDir);
+	} else {
+		AddLogLineC(CFormat(_("Skipping shared directory with invalid or non-absolute path: %s"))
+			% incomingDir.GetPrintable());
+	}
+
 	for (unsigned int i = 1;i < theApp->glob_prefs->GetCatCount(); ++i) {
-		sharedPaths.push_back(theApp->glob_prefs->GetCatPath(i));
+		CPath categoryPath = theApp->glob_prefs->GetCatPath(i);
+		if (IsValidSharedPath(categoryPath)) {
+			sharedPaths.push_back(categoryPath);
+		} else {
+			AddLogLineC(CFormat(_("Skipping shared directory with invalid or non-absolute path: %s"))
+				% categoryPath.GetPrintable());
+		}
 	}
 
 	const thePrefs::PathList& shared = theApp->glob_prefs->shareddir_list;
-	sharedPaths.insert(sharedPaths.end(), shared.begin(), shared.end());
+	for (thePrefs::PathList::const_iterator it = shared.begin(); it != shared.end(); ++it) {
+		const CPath& sharedPath = *it;
+		if (!IsValidSharedPath(sharedPath)) {
+			AddLogLineC(CFormat(_("Skipping shared directory with invalid or non-absolute path: %s"))
+				% sharedPath.GetPrintable());
+			continue;
+		}
+		sharedPaths.push_back(sharedPath);
+	}
 
 	sharedPaths.sort();
 	sharedPaths.unique();
@@ -389,6 +412,19 @@ static bool CheckDirectory(const wxString& a, const CPath& b)
 	}
 
 	return false;
+}
+
+
+static bool IsAbsolutePath(const CPath& path)
+{
+	wxFileName fn(path.GetRaw());
+	return fn.IsAbsolute();
+}
+
+
+static bool IsValidSharedPath(const CPath& path)
+{
+	return path.IsOk() && IsAbsolutePath(path);
 }
 
 
@@ -895,11 +931,21 @@ void CSharedFileList::RemoveKeywords(CKnownFile* pFile)
 
 bool CSharedFileList::RenameFile(CKnownFile* file, const CPath& newName)
 {
+	CPath sanitizedName;
+	if (!NormalizeRenameTarget(newName.GetPrintable(), sanitizedName)) {
+		AddLogLineCS(_("Denied file rename because the target name is invalid."));
+		return false;
+	}
+
+	if (sanitizedName == file->GetFileName()) {
+		return true;
+	}
+
 	if (file->IsPartFile()) {
 		CPartFile* pfile = dynamic_cast<CPartFile*>(file);
 
 		if (file->GetStatus() != PS_COMPLETING) {
-			pfile->SetFileName(newName);
+			pfile->SetFileName(sanitizedName);
 			pfile->SavePartFile();
 
 			Notify_SharedFilesUpdateItem(file);
@@ -909,14 +955,14 @@ bool CSharedFileList::RenameFile(CKnownFile* file, const CPath& newName)
 		}
 	} else {
 		CPath oldPath = file->GetFilePath().JoinPaths(file->GetFileName());
-		CPath newPath = file->GetFilePath().JoinPaths(newName);
+		CPath newPath = file->GetFilePath().JoinPaths(sanitizedName);
 
 		if (CPath::RenameFile(oldPath, newPath)) {
 			// Must create a copy of the word list because:
 			// 1) it will be reset on SetFileName()
 			// 2) we will want to edit it
 			Kademlia::WordList oldwords = file->GetKadKeywords();
-			file->SetFileName(newName);
+			file->SetFileName(sanitizedName);
 			theApp->knownfiles->Save();
 			UpdateItem(file);
 			RepublishFile(file);

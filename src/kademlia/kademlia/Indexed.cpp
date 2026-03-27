@@ -37,6 +37,7 @@ there client on the eMule forum..
 */
 
 #include "Indexed.h"
+#include <common/Path.h>
 
 
 #include <protocol/Protocols.h>
@@ -129,10 +130,10 @@ void CIndexed::ReadFile()
 									while (tagList) {
 										CTag* tag = k_file.ReadTag();
 										if (tag) {
-											if (!tag->GetName().Cmp(TAG_FILENAME)) {
-												if (toAdd->GetCommonFileName().IsEmpty()) {
-													toAdd->SetFileName(tag->GetStr());
-												}
+					if (!tag->GetName().Cmp(TAG_FILENAME)) {
+						if (toAdd->GetCommonFileName().IsEmpty()) {
+							toAdd->SetFileName(SanitizeFileName(tag->GetStr()).GetPrintable());
+						}
 												delete tag;
 											} else if (!tag->GetName().Cmp(TAG_FILESIZE)) {
 												if (tag->IsBsob() && (tag->GetBsobSize() == 8)) {

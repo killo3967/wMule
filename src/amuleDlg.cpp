@@ -148,7 +148,7 @@ wxFrame(
 	pParent, -1, title, where, dlg_size,
 	wxCAPTION|wxRESIZE_BORDER|wxSYSTEM_MENU|wxDIALOG_NO_PARENT|
 	wxRESIZE_BORDER|wxMINIMIZE_BOX|wxMAXIMIZE_BOX|wxCLOSE_BOX,
-	wxT("aMule")),
+	wxT("wMule")),
 m_activewnd(nullptr),
 m_transferwnd(nullptr),
 m_serverwnd(nullptr),
@@ -231,11 +231,11 @@ m_clientSkinNames(CLIENT_SKIN_SIZE)
 	m_serverwnd = new CServerWnd(p_cnt, m_srv_split_pos);
 	AddLogLineN(wxEmptyString);
 	AddLogLineN(wxT(" - ") +
-		CFormat(_("This is aMule %s based on eMule.")) % GetMuleVersion());
+		CFormat(_("This is wMule %s based on eMule.")) % GetMuleVersion());
 	AddLogLineN(wxT("   ") +
 		CFormat(_("Running on %s")) % wxGetOsDescription());
 	AddLogLineN(wxT(" - ") +
-		wxString(_("Visit http://www.amule.org to check if a new version is available.")));
+		wxString(_("Visit https://github.com/wMule/wMule to check if a new version is available.")));
 	AddLogLineN(wxEmptyString);
 
 #ifdef ENABLE_IP2COUNTRY
@@ -486,21 +486,21 @@ void CamuleDlg::OnAboutButton(wxCommandEvent& WXUNUSED(ev))
 {
 	wxString msg = wxT(" ");
 #ifdef CLIENT_GUI
-	msg << _("aMule remote control ") << wxT(VERSION);
+	msg << _("wMule remote control ") << wxT(VERSION);
 #else
-	msg << wxT("aMule ") << wxT(VERSION);
+	msg << wxT("wMule ") << wxT(VERSION);
 #endif
 	msg << wxT(" ");
 #ifdef SVNDATE
 	msg << _("Snapshot:") << wxT("\n ") << wxT(SVNDATE);
 #endif
 	msg << wxT("\n\n") << _("'All-Platform' p2p client based on eMule \n\n") <<
-		_("Website: http://www.amule.org \n") <<
-		_("Forum: http://forum.amule.org \n") <<
-		_("FAQ: http://wiki.amule.org \n\n") <<
-		_("Contact: admin@amule.org (administrative issues) \n") <<
-		_("Copyright (c) 2003-2019 aMule Team \n\n") <<
-		_("Part of aMule is based on \n") <<
+		_("Website: https://github.com/wMule/wMule \n") <<
+		_("Issues: https://github.com/wMule/wMule/issues \n") <<
+		_("Wiki: https://github.com/wMule/wMule/wiki \n\n") <<
+		_("Contact: Please use GitHub issues or discussions \n") <<
+		_("Copyright (c) 2003-2019 aMule Team / maintained by the wMule project \n\n") <<
+		_("Part of wMule is based on \n") <<
 		_("Kademlia: Peer-to-peer routing based on the XOR metric.\n") <<
                 _(" Copyright (c) 2002-2011 Petar Maymounkov ( petar@post.harvard.edu )\n") <<
 		_("http://kademlia.scs.cs.nyu.edu\n");
@@ -543,7 +543,7 @@ CamuleDlg::~CamuleDlg()
 	delete m_IP2Country;
 #endif
 
-	AddLogLineN(_("aMule dialog destroyed"));
+	AddLogLineN(_("wMule dialog destroyed"));
 }
 
 
@@ -873,9 +873,9 @@ void CamuleDlg::ShowTransferRate()
 
 		wxString buffer2;
 		if ( theApp->IsConnected() ) {
-			buffer2 = CFormat(_("aMule (%s | Connected)")) % buffer;
+			buffer2 = CFormat(_("wMule (%s | Connected)")) % buffer;
 		} else {
-			buffer2 = CFormat(_("aMule (%s | Disconnected)")) % buffer;
+			buffer2 = CFormat(_("wMule (%s | Disconnected)")) % buffer;
 		}
 		m_wndTaskbarNotifier->SetTrayToolTip(buffer2);
 	}

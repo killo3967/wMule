@@ -165,7 +165,7 @@ msgstr ""
 
 #: src/amule.cpp:1045
 #, c-format
-msgid "This is the first time you run aMule %s"
+msgid "This is the first time you run wMule %s"
 msgstr ""
 
 #: src/amule.cpp:1047
@@ -181,15 +181,11 @@ msgid "or kill your dog. But it *should* be safe to use anyway.\n"
 msgstr ""
 
 #: src/amule.cpp:1054
-msgid "More information, support and new releases can found at our homepage,\n"
+msgid "More information, support and new releases are available on the wMule project page:\n"
 msgstr ""
 
-#: src/amule.cpp:1055
-msgid "at www.aMule.org, or in our IRC channel #aMule at irc.freenode.net.\n"
-msgstr ""
-
-#: src/amule.cpp:1057
-msgid "Feel free to report any bugs to http://forum.amule.org"
+#: src/amule.cpp:1056
+msgid "Please report any bugs or issues at:\n"
 msgstr ""
 
 #: src/amule.cpp:1070

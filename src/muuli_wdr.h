@@ -278,7 +278,7 @@ wxSizer *PreferencesStatisticsTab( wxWindow *parent, bool call_fit = true, bool 
 #define IDC_SERVERKEEPALIVE_LABEL 10196
 #define IDC_SERVERKEEPALIVE 10197
 #define IDC_PREVENT_SLEEP 10198
-wxSizer *PreferencesaMuleTweaksTab( wxWindow *parent, bool call_fit = true, bool set_sizer = true );
+wxSizer *PreferencesWmuleTweaksTab( wxWindow *parent, bool call_fit = true, bool set_sizer = true );
 
 #define IDC_SKIN 10199
 #define IDC_FED2KLH 10200
@@ -338,7 +338,7 @@ wxSizer *ServerInfoLog( wxWindow *parent, bool call_fit = true, bool set_sizer =
 
 #define ID_LOGVIEW 10242
 #define ID_BTN_RESET 10243
-wxSizer *aMuleLog( wxWindow *parent, bool call_fit = true, bool set_sizer = true );
+wxSizer *wMuleLog( wxWindow *parent, bool call_fit = true, bool set_sizer = true );
 
 #define ID_UPDATELIST 10244
 #define IDC_SERVERLISTURL 10245

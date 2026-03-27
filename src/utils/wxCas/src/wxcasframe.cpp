@@ -40,6 +40,8 @@
 #include <wx/version.h>
 #include <wx/wfstream.h>
 
+#include <common/Path.h>
+
 #include "wxcasframe.h"
 #include "wxcasprint.h"
 #include "wxcasprefs.h"
@@ -108,7 +110,7 @@ WxCasFrame::WxCasFrame ( const wxString & title ) :
 #endif
 
 	// Statistics Static Vertical Box Sizer
-	m_sigPanelSBox = new wxStaticBox ( m_mainPanel, -1, _( "aMule" ) );
+	m_sigPanelSBox = new wxStaticBox ( m_mainPanel, -1, _( "wMule" ) );
 	m_sigPanelSBoxSizer = new wxStaticBoxSizer ( m_sigPanelSBox, wxVERTICAL );
 
 	// Hit Static Horizontal Box Sizer
@@ -356,24 +358,31 @@ WxCasFrame::OnBarSave ( wxCommandEvent& WXUNUSED( event ) )
 	wxString saveFileName(selectSaveFile.GetPath());
 
 	if ( !saveFileName.empty () ) {
+		wxString normalized;
+		if (!NormalizeAbsolutePath(saveFileName, normalized)) {
+			wxMessageBox(_("The selected path is not a valid absolute file."),
+				_("Invalid path"), wxOK | wxICON_ERROR, this);
+			delete statImage;
+			return;
+		}
 		// static list of allowed types, update if you change extensions above
 		const wxString ext[3] = { wxT(".png"), wxT(".jpg"), wxT(".bmp") };
 		const wxString fileType = ext[selectSaveFile.GetFilterIndex()];
 		bool isValidFileType = false;
 
 		for(int i=0;i<3;++i) {
-			if(ext[i] == saveFileName.Right(4)) {
+			if(ext[i] == normalized.Right(4)) {
 				isValidFileType = true;
 				break;
 			}
 		}
 
 		if (!isValidFileType) {
-			saveFileName += fileType;
+			normalized += fileType;
 		}
 
 		// wx will display a message if saving fails, file type is taken from extension
-		statImage->SaveFile( saveFileName );
+		statImage->SaveFile( normalized );
 	}
 	delete statImage;
 }
@@ -383,7 +392,7 @@ void
 WxCasFrame::OnBarPrint ( wxCommandEvent& WXUNUSED( event ) )
 {
 	wxPrinter printer;
-	WxCasPrint printout ( _( "aMule Online Statistics" ) );
+	WxCasPrint printout ( _( "wMule Online Statistics" ) );
 	if ( !printer.Print ( this, &printout, true ) ) {
 		if ( wxPrinter::GetLastError () == wxPRINTER_ERROR ) {
 			wxMessageBox ( _
@@ -406,7 +415,7 @@ void
 WxCasFrame::OnBarAbout ( wxCommandEvent& WXUNUSED( event ) )
 {
 	wxMessageBox ( _
-	               ( "wxCas, aMule OnLine Signature Statistics\n\n(c) 2004 ThePolish <thepolish@vipmail.ru>\n\nBased on CAS by Pedro de Oliveira <falso@rdk.homeip.net>\n\nDistributed under GPL" ),
+		               ( "wxCas, wMule OnLine Signature Statistics\n\n(c) 2004 ThePolish <thepolish@vipmail.ru>\n\nBased on CAS by Pedro de Oliveira <falso@rdk.homeip.net>\n\nDistributed under GPL" ),
 	               _( "About wxCas" ), wxOK | wxCENTRE | wxICON_INFORMATION );
 }
 
@@ -572,7 +581,7 @@ WxCasFrame::UpdateStatsPanel ()
 
 	// aMule is not running
 	if ( m_aMuleSig->GetUpStatus () == 0) {
-		status = _( "Oh Oh, aMule is not running..." );
+		status = _( "Oh Oh, wMule is not running..." );
 		newline = MakeStatLine_2();
 		m_statLine_2->SetLabel ( newline );
 
@@ -648,7 +657,7 @@ WxCasFrame::UpdateStatsPanel ()
 		newMaxLineCount = GetMaxUInt( newline.Length (), newMaxLineCount );
 #endif
 
-		status = _( "aMule is running" );
+		status = _( "wMule is running" );
 	}
 	// aMule is running, ed2k is off, but kad connected
 	else if ( (m_aMuleSig->GetAmuleState () == 0) && (m_aMuleSig->GetKadState () == 1 || m_aMuleSig->GetKadState () == 2 )) {
@@ -718,7 +727,7 @@ WxCasFrame::UpdateStatsPanel ()
 
 		newMaxLineCount = GetMaxUInt( newline.Length (), newMaxLineCount );
 #endif
-		status = _( "aMule is running" );
+		status = _( "wMule is running" );
 	}
 	else if ( (m_aMuleSig->GetAmuleState () == 1) && (m_aMuleSig->GetKadState () == 0)) {
 		// Stat line 2
@@ -787,7 +796,7 @@ WxCasFrame::UpdateStatsPanel ()
 
 		newMaxLineCount = GetMaxUInt( newline.Length (), newMaxLineCount );
 #endif
-		status = _( "aMule is running" );
+		status = _( "wMule is running" );
 	}
 	//both disconnected
 	else if ( (m_aMuleSig->GetAmuleState () == 0) && (m_aMuleSig->GetKadState () == 0)) {
@@ -857,7 +866,7 @@ WxCasFrame::UpdateStatsPanel ()
 
 		newMaxLineCount = GetMaxUInt( newline.Length (), newMaxLineCount );
 #endif
-		status = _( "aMule is running, but disconnected" );
+		status = _( "wMule is running, but disconnected" );
 	}
 	// aMule is connecting
 	else if ( m_aMuleSig->GetAmuleState () == 2 ) {
@@ -928,11 +937,11 @@ WxCasFrame::UpdateStatsPanel ()
 		newMaxLineCount = GetMaxUInt( newline.Length (), newMaxLineCount );
 #endif
 
-		status = _( "aMule is connecting..." );
+		status = _( "wMule is connecting..." );
 	}
 	// aMule status is unknown
 	else {
-		status = _( "Oh Oh, aMule status is unknown..." );
+		status = _( "Oh Oh, wMule status is unknown..." );
 	}
 
 	Thaw ();
@@ -1003,24 +1012,24 @@ WxCasFrame::MakeStatLine_1() const
 {
 	wxString newline;
 	if ( m_aMuleSig->GetAmuleState () == 1 || m_aMuleSig->GetKadState () == 1 || m_aMuleSig->GetKadState () == 2 ) {
-		newline = _( "aMule " )
+		newline = _( "wMule " )
 		          + m_aMuleSig->GetVersion ()
 		          + _( " has been running for " )
 		          + m_aMuleSig->GetRunTime ();
 	} else if ( m_aMuleSig->GetUpStatus () == 0 ) {
-		newline  = _( "aMule " )
+		newline  = _( "wMule " )
 		          + m_aMuleSig->GetVersion ()
 		          + _( " is stopped !" );
 	} else if ( m_aMuleSig->GetAmuleState () == 0 && m_aMuleSig->GetKadState () == 0 ) {
-		newline = _( "aMule " )
+		newline = _( "wMule " )
 		          + m_aMuleSig->GetVersion ()
 		          + _( " is not connected !" );
 	} else if ( m_aMuleSig->GetAmuleState () == 2 ) {
-		newline = _( "aMule " )
+		newline = _( "wMule " )
 		          + m_aMuleSig->GetVersion ()
 		          + _( " is connecting..." );
 	} else {
-		newline = _( "aMule " )
+		newline = _( "wMule " )
 		          + m_aMuleSig->GetVersion ()
 		          + _( " is doing something strange, check it !" );
 	}

@@ -192,8 +192,8 @@ msgstr ""
 
 #: src/amule.cpp:1045
 #, c-format
-msgid "This is the first time you run aMule %s"
-msgstr "És la primera vegada que executeu l'aMule %s"
+msgid "This is the first time you run wMule %s"
+msgstr "És la primera vegada que executeu l'wMule %s"
 
 #: src/amule.cpp:1047
 msgid "This version is a testing version, updated daily, and\n"

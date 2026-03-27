@@ -28,6 +28,7 @@
 
 #include <common/Constants.h>
 #include <common/Macros.h>		// Needed for itemsof()
+#include <common/Path.h>
 
 #include <wx/colordlg.h>
 #include <wx/tooltip.h>
@@ -185,7 +186,7 @@ PrefsPage pages[] =
 	{ wxTRANSLATE("Filters"),			PreferencesFilteringTab,	23 },
 	{ wxTRANSLATE("Remote Controls"),	PreferencesRemoteControlsTab,	11 },
 	{ wxTRANSLATE("Online Signature"),	PreferencesOnlineSigTab,	21 },
-	{ wxTRANSLATE("Advanced"),			PreferencesaMuleTweaksTab,	12 },
+	{ wxTRANSLATE("Advanced"),			PreferencesWmuleTweaksTab,	12 },
 	{ wxTRANSLATE("Events"),			PreferencesEventsTab,		5 }
 #ifdef __DEBUG__
 	,{ wxTRANSLATE("Debugging"),		PreferencesDebug,			25 }
@@ -284,10 +285,10 @@ wxDialog(parent, -1, _("Preferences"),
 			m_IndexServerTab = i;
 			m_ServerWidget = Widget;
 		}
-		else if (pages[i].m_function == PreferencesaMuleTweaksTab) {
+		else if (pages[i].m_function == PreferencesWmuleTweaksTab) {
 			wxStaticText *txt = CastChild(IDC_AMULE_TWEAKS_WARNING, wxStaticText);
 			// Do not wrap this line, Windows _() can't handle wrapped strings
-			txt->SetLabel(_("Do not change these setting unless you know\nwhat you are doing, otherwise you can easily\nmake things worse for yourself.\n\naMule will run fine without adjusting any of\nthese settings."));
+			txt->SetLabel(_("Do not change these setting unless you know\nwhat you are doing, otherwise you can easily\nmake things worse for yourself.\n\nwMule will run fine without adjusting any of\nthese settings."));
 			#if defined CLIENT_GUI || !PLATFORMSPECIFIC_CAN_PREVENT_SLEEP_MODE
 				CastChild(IDC_PREVENT_SLEEP, wxCheckBox)->Enable(false);
 				thePrefs::SetPreventSleepWhileDownloading(false);
@@ -540,8 +541,9 @@ bool PrefsUnifiedDlg::TransferFromWindow()
 		}
 	}
 
-	theApp->glob_prefs->shareddir_list.clear();
-	m_ShareSelector->GetSharedDirectories(&theApp->glob_prefs->shareddir_list);
+	thePrefs::PathList selectedDirectories;
+	m_ShareSelector->GetSharedDirectories(&selectedDirectories);
+	theApp->glob_prefs->shareddir_list = thePrefs::SanitizeSharedDirectories(selectedDirectories);
 
 	for ( int i = 0; i < cntStatColors; i++ ) {
 		if ( thePrefs::s_colors[i] != thePrefs::s_colors_ref[i] ) {
@@ -590,7 +592,7 @@ void PrefsUnifiedDlg::OnOk(wxCommandEvent& WXUNUSED(event))
 	TransferFromWindow();
 
 	bool restart_needed = false;
-	wxString restart_needed_msg = _("aMule must be restarted to enable these changes:\n\n");
+	wxString restart_needed_msg = _("wMule must be restarted to enable these changes:\n\n");
 
 	// do sanity checking, special processing, and user notifications here
 	thePrefs::CheckUlDlRatio();
@@ -746,7 +748,7 @@ void PrefsUnifiedDlg::OnOk(wxCommandEvent& WXUNUSED(event))
 	}
 
 	if (restart_needed) {
-		wxMessageBox(restart_needed_msg + _("\nYou MUST restart aMule now.\nIf you do not restart now, don't complain if anything bad happens.\n"),
+		wxMessageBox(restart_needed_msg + _("\nYou MUST restart wMule now.\nIf you do not restart now, don't complain if anything bad happens.\n"),
 			_("WARNING"), wxOK | wxICON_EXCLAMATION, this);
 	}
 
@@ -1028,7 +1030,13 @@ void PrefsUnifiedDlg::OnButtonDir(wxCommandEvent& event)
 		wxDD_DEFAULT_STYLE,
 		wxDefaultPosition, this);
 	if (!str.IsEmpty()) {
-		widget->SetValue(str);
+		wxString normalized;
+		if (NormalizeSharedPath(str, normalized)) {
+			widget->SetValue(normalized);
+		} else {
+			theApp->ShowAlert(CFormat(_("The path '%s' is not a valid absolute directory.")) % str,
+				_("Invalid directory"), wxOK | wxICON_ERROR);
+		}
 	}
 }
 
@@ -1061,8 +1069,14 @@ void PrefsUnifiedDlg::OnButtonBrowseApplication(wxCommandEvent& event)
 		wxEmptyString, wildcard, 0, this );
 
 	if ( !str.IsEmpty() ) {
-		wxTextCtrl* widget = CastChild( id, wxTextCtrl );
-		widget->SetValue( str );
+		wxString normalized;
+		if (NormalizeAbsolutePath(str, normalized)) {
+			wxTextCtrl* widget = CastChild( id, wxTextCtrl );
+			widget->SetValue( normalized );
+		} else {
+			theApp->ShowAlert(CFormat(_("The path '%s' is not a valid absolute file.")) % str,
+				_("Invalid path"), wxOK | wxICON_ERROR);
+		}
 	}
 }
 

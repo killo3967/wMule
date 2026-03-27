@@ -53,10 +53,10 @@ typedef std::map<unsigned long int,SearchFile*> CResultMap;
 
 wxString ECv2_Response2String(CECPacket *response);
 
-class CamulecmdApp : public CwMuleExternalConnector
+class CamulecmdApp : public CaMuleExternalConnector
 {
 public:
-	const wxString GetGreetingTitle() { return _("aMule text client"); }
+	const wxString GetGreetingTitle() { return _("wMule text client"); }
 	int ProcessCommand(int ID);
 	void Process_Answer_v2(const CECPacket *reply);
 	void OnInitCommandSet();

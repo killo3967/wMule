@@ -38,6 +38,7 @@ there client on the eMule forum..
 */
 
 #include "Search.h"
+#include <common/Path.h>
 
 #include <protocol/Protocols.h>
 #include <protocol/kad/Client2Client/UDP.h>
@@ -940,7 +941,7 @@ void CSearch::ProcessResultNotes(const CUInt128& answer, TagPtrList *info)
 		} else if (!tag->GetName().Cmp(TAG_SOURCEPORT)) {
 			entry->m_uTCPport = tag->GetInt();
 		} else if (!tag->GetName().Cmp(TAG_FILENAME)) {
-			entry->SetFileName(tag->GetStr());
+			entry->SetFileName(SanitizeFileName(tag->GetStr()).GetPrintable());
 		} else if (!tag->GetName().Cmp(TAG_DESCRIPTION)) {
 			wxString strComment(tag->GetStr());
 			bFilterComment = thePrefs::IsMessageFiltered(strComment);

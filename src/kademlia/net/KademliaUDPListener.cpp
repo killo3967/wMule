@@ -35,6 +35,7 @@ there client on the eMule forum..
 #include <wx/wx.h>
 
 #include "KademliaUDPListener.h"
+#include "KadPacketGuards.h"
 
 #include <protocol/Protocols.h>
 #include <protocol/kad/Constants.h>
@@ -44,6 +45,7 @@ there client on the eMule forum..
 #include <protocol/ed2k/Client2Client/TCP.h> // OP_CALLBACK is sent in some cases.
 #include <common/Macros.h>
 #include <common/Format.h>
+#include <common/Path.h>
 #include <tags/FileTags.h>
 
 #include "../routing/Contact.h"
@@ -84,6 +86,11 @@ there client on the eMule forum..
 
 
 ////////////////////////////////////////
+using KadPacketGuards::EnsureKadPayload;
+using KadPacketGuards::EnsureKadTagCount;
+using KadPacketGuards::MAX_KAD_BOOTSTRAP_CONTACTS;
+using KadPacketGuards::MAX_KAD_PUBLISH_RECORDS;
+using KadPacketGuards::MAX_KAD_TAGS;
 using namespace Kademlia;
 ////////////////////////////////////////
 
@@ -277,7 +284,7 @@ void CKademliaUDPListener::ProcessPacket(const uint8_t* data, uint32_t lenData, 
 			break;
 		case KADEMLIA_SEARCH_RES:
 			DebugRecv(KadSearchRes, ip, port);
-			ProcessSearchResponse(packetData, lenPacket);
+			ProcessSearchResponse(packetData, lenPacket, ip, port);
 			break;
 		case KADEMLIA_SEARCH_NOTES_RES:
 			DebugRecv(KadSearchNotesRes, ip, port);
@@ -285,7 +292,7 @@ void CKademliaUDPListener::ProcessPacket(const uint8_t* data, uint32_t lenData, 
 			break;
 		case KADEMLIA2_SEARCH_RES:
 			DebugRecv(Kad2SearchRes, ip, port);
-			Process2SearchResponse(packetData, lenPacket, senderKey);
+			Process2SearchResponse(packetData, lenPacket, ip, port, senderKey);
 			break;
 		case KADEMLIA2_PUBLISH_NOTES_REQ:
 			DebugRecv(Kad2PublishNotesReq, ip, port);
@@ -363,7 +370,12 @@ void CKademliaUDPListener::ProcessPacket(const uint8_t* data, uint32_t lenData, 
 			break;
 
 		default: {
-			throw wxString(CFormat(wxT("Unknown opcode %02x on CKademliaUDPListener::ProcessPacket()")) % opcode);
+			AddDebugLogLineN(logKadPacketTracking,
+				CFormat(wxT("Dropping unknown Kad opcode 0x%02x from %s (len=%u)"))
+				% opcode
+				% KadIPToString(ip)
+				% lenPacket);
+			return;
 		}
 	}
 }
@@ -375,7 +387,13 @@ bool CKademliaUDPListener::AddContact2(const uint8_t *data, uint32_t lenData, ui
 		*outRequestsACK = false;
 	}
 
+	constexpr uint32_t minStructure = 16 + 2 + 1 + 1;
+	if (lenData < minStructure) {
+		throw wxString(CFormat(wxT("***NOTE: Truncated AddContact2 packet (%u bytes)")) % lenData);
+	}
+
 	CMemFile bio(data, lenData);
+	EnsureKadPayload(bio, minStructure, __FUNCTION__);
 	CUInt128 id = bio.ReadUInt128();
 	if (outContactID != nullptr) {
 		*outContactID = id;
@@ -391,6 +409,7 @@ bool CKademliaUDPListener::AddContact2(const uint8_t *data, uint32_t lenData, ui
 	bool udpFirewalled = false;
 	bool tcpFirewalled = false;
 	uint8_t tags = bio.ReadUInt8();
+	EnsureKadTagCount(tags, __FUNCTION__);
 	while (tags) {
 		CTag *tag = bio.ReadTag();
 		if (!tag->GetName().Cmp(TAG_SOURCEUPORT)) {
@@ -483,12 +502,14 @@ void CKademliaUDPListener::Process2BootstrapRequest(uint32_t ip, uint16_t port, 
 // Used only for Kad2.0
 void CKademliaUDPListener::Process2BootstrapResponse(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey, bool validReceiverKey)
 {
+	CHECK_PACKET_MIN_SIZE(16 + 2 + 1 + 2);
 	CHECK_TRACKED_PACKET(KADEMLIA2_BOOTSTRAP_REQ);
 
 	CRoutingZone *routingZone = CKademlia::GetRoutingZone();
 
 	// How many contacts were given
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 2 + 1 + 2, __FUNCTION__);
 	CUInt128 contactID = bio.ReadUInt128();
 	uint16_t tport = bio.ReadUInt16();
 	uint8_t version = bio.ReadUInt8();
@@ -503,7 +524,13 @@ void CKademliaUDPListener::Process2BootstrapResponse(const uint8_t *packetData, 
 	//AddDebugLogLineN(logClientKadUDP, wxT("Inc Kad2 Bootstrap packet from ") + KadIPToString(ip));
 
 	uint16_t numContacts = bio.ReadUInt16();
+	if (numContacts > MAX_KAD_BOOTSTRAP_CONTACTS) {
+		throw wxString(CFormat(wxT("***NOTE: Received %u bootstrap contacts (max %u)"))
+			% numContacts
+			% MAX_KAD_BOOTSTRAP_CONTACTS);
+	}
 	while (numContacts) {
+		EnsureKadPayload(bio, 16 + 4 + 2 + 2 + 1, __FUNCTION__);
 		contactID = bio.ReadUInt128();
 		ip = bio.ReadUInt32();
 		port = bio.ReadUInt16();
@@ -582,6 +609,7 @@ void CKademliaUDPListener::Process2HelloResponseAck(const uint8_t *packetData, u
 
 	// Additional packet to complete a three-way-handshake, making sure the remote contact is not using a spoofed ip.
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16, __FUNCTION__);
 	CUInt128 remoteID = bio.ReadUInt128();
 	// cppcheck-suppress duplicateBranch
 	if (!CKademlia::GetRoutingZone()->VerifyContact(remoteID, ip)) {
@@ -640,8 +668,11 @@ void CKademliaUDPListener::Process2HelloResponse(const uint8_t *packetData, uint
 // Used in Kad2.0 only
 void CKademliaUDPListener::ProcessKademlia2Request(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey)
 {
+	CHECK_PACKET_MIN_SIZE(1 + 16 + 16);
+
 	// Get target and type
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 1, __FUNCTION__);
 	uint8_t type = bio.ReadUInt8();
 	type &= 0x1F;
 	if (type == 0) {
@@ -649,6 +680,7 @@ void CKademliaUDPListener::ProcessKademlia2Request(const uint8_t *packetData, ui
 	}
 
 	// This is the target node trying to be found.
+	EnsureKadPayload(bio, 16 + 16, __FUNCTION__);
 	CUInt128 target = bio.ReadUInt128();
 	// Convert Target to Distance as this is how we store contacts.
 	CUInt128 distance(CKademlia::GetPrefs()->GetKadID());
@@ -694,6 +726,7 @@ void CKademliaUDPListener::ProcessKademlia2Response(const uint8_t *packetData, u
 
 	// What search does this relate to
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 1, __FUNCTION__);
 	CUInt128 target = bio.ReadUInt128();
 	uint8_t numContacts = bio.ReadUInt8();
 
@@ -911,6 +944,7 @@ SSearchTerm* CKademliaUDPListener::CreateSearchExpressionTree(CMemFile& bio, int
 void CKademliaUDPListener::Process2SearchKeyRequest(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey)
 {
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 2, __FUNCTION__);
 	CUInt128 target = bio.ReadUInt128();
 	uint16_t startPosition = bio.ReadUInt16();
 	bool restrictive = ((startPosition & 0x8000) == 0x8000);
@@ -933,6 +967,7 @@ void CKademliaUDPListener::Process2SearchKeyRequest(const uint8_t *packetData, u
 void CKademliaUDPListener::Process2SearchSourceRequest(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey)
 {
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 2 + 8, __FUNCTION__);
 	CUInt128 target = bio.ReadUInt128();
 	uint16_t startPosition = (bio.ReadUInt16() & 0x7FFF);
 	uint64_t fileSize = bio.ReadUInt64();
@@ -946,8 +981,15 @@ void CKademliaUDPListener::ProcessSearchResponse(CMemFile& bio)
 
 	// How many results..
 	uint16_t count = bio.ReadUInt16();
+	constexpr uint16_t MAX_RESULTS_PER_PACKET = 64;
+	if (count > MAX_RESULTS_PER_PACKET) {
+		throw wxString(CFormat(wxT("***NOTE: Search response lists %u results (max %u)"))
+			% count
+			% MAX_RESULTS_PER_PACKET);
+	}
 	while (count > 0) {
 		// What is the answer
+		EnsureKadPayload(bio, 16, __FUNCTION__);
 		CUInt128 answer = bio.ReadUInt128();
 
 		// Get info about answer
@@ -956,6 +998,7 @@ void CKademliaUDPListener::ProcessSearchResponse(CMemFile& bio)
 		// supposed to be 'viewed' by user only and not feed into the Kad engine again!
 		// If that tag list is once used for something else than for viewing, special care has to be taken for any
 		// string conversion!
+		EnsureKadPayload(bio, 1, __FUNCTION__);
 		CScopedContainer<TagPtrList> tags;
 		bio.ReadTagPtrList(tags.get(), true/*bOptACP*/);
 		CSearchManager::ProcessResult(target, answer, tags.get());
@@ -966,10 +1009,11 @@ void CKademliaUDPListener::ProcessSearchResponse(CMemFile& bio)
 
 // KADEMLIA_SEARCH_RES
 // Used in Kad1.0 only
-void CKademliaUDPListener::ProcessSearchResponse(const uint8_t *packetData, uint32_t lenPacket)
+void CKademliaUDPListener::ProcessSearchResponse(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t WXUNUSED(port))
 {
 	// Verify packet is expected size
 	CHECK_PACKET_MIN_SIZE(37);
+	CHECK_TRACKED_PACKET(KADEMLIA_SEARCH_REQ);
 
 	CMemFile bio(packetData, lenPacket);
 	ProcessSearchResponse(bio);
@@ -977,8 +1021,16 @@ void CKademliaUDPListener::ProcessSearchResponse(const uint8_t *packetData, uint
 
 // KADEMLIA2_SEARCH_RES
 // Used in Kad2.0 only
-void CKademliaUDPListener::Process2SearchResponse(const uint8_t *packetData, uint32_t lenPacket, const CKadUDPKey& WXUNUSED(senderKey))
+void CKademliaUDPListener::Process2SearchResponse(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t WXUNUSED(port), const CKadUDPKey& WXUNUSED(senderKey))
 {
+	if (!IsOnOutTrackList(ip, KADEMLIA2_SEARCH_KEY_REQ)
+		&& !IsOnOutTrackList(ip, KADEMLIA2_SEARCH_NOTES_REQ)
+		&& !IsOnOutTrackList(ip, KADEMLIA2_SEARCH_SOURCE_REQ)) {
+		throw wxString(CFormat(wxT("***NOTE: Received unrequested response packet, size (%u) in %s"))
+			% lenPacket
+			% wxString::FromAscii(__FUNCTION__));
+	}
+
 	CMemFile bio(packetData, lenPacket);
 
 	// Who sent this packet.
@@ -991,6 +1043,7 @@ void CKademliaUDPListener::Process2SearchResponse(const uint8_t *packetData, uin
 // Used in Kad2.0 only
 void CKademliaUDPListener::Process2PublishKeyRequest(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey)
 {
+	CHECK_PACKET_MIN_SIZE(16 + 2);
 	//Used Pointers
 	CIndexed *indexed = CKademlia::GetIndexed();
 
@@ -1001,6 +1054,7 @@ void CKademliaUDPListener::Process2PublishKeyRequest(const uint8_t *packetData, 
 	}
 
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 2, __FUNCTION__);
 	CUInt128 file = bio.ReadUInt128();
 
 	CUInt128 distance(CKademlia::GetPrefs()->GetKadID());
@@ -1012,10 +1066,16 @@ void CKademliaUDPListener::Process2PublishKeyRequest(const uint8_t *packetData, 
 
 	DEBUG_ONLY( wxString strInfo; )
 	uint16_t count = bio.ReadUInt16();
+	if (count > MAX_KAD_PUBLISH_RECORDS) {
+		throw wxString(CFormat(wxT("***NOTE: Received %u keyword publishes (max %u)"))
+			% count
+			% MAX_KAD_PUBLISH_RECORDS);
+	}
 	uint8_t load = 0;
 	while (count > 0) {
 		DEBUG_ONLY( strInfo.Clear(); )
 
+		EnsureKadPayload(bio, 16 + 1, __FUNCTION__);
 		CUInt128 target = bio.ReadUInt128();
 
 		Kademlia::CKeyEntry* entry = new Kademlia::CKeyEntry();
@@ -1027,13 +1087,15 @@ void CKademliaUDPListener::Process2PublishKeyRequest(const uint8_t *packetData, 
 			entry->m_uSourceID = target;
 			entry->m_tLifeTime = (uint32_t)time(nullptr) + KADEMLIAREPUBLISHTIMEK;
 			entry->m_bSource = false;
-			uint32_t tags = bio.ReadUInt8();
+			EnsureKadPayload(bio, 1, __FUNCTION__);
+			uint8_t tags = bio.ReadUInt8();
+			EnsureKadTagCount(tags, __FUNCTION__);
 			while (tags > 0) {
 				CTag* tag = bio.ReadTag();
 				if (tag) {
 					if (!tag->GetName().Cmp(TAG_FILENAME)) {
 						if (entry->GetCommonFileName().IsEmpty()) {
-							entry->SetFileName(tag->GetStr());
+							entry->SetFileName(SanitizeFileName(tag->GetStr()).GetPrintable());
 							DEBUG_ONLY( strInfo += CFormat(wxT("  Name=\"%s\"")) % entry->GetCommonFileName(); )
 						}
 						delete tag; // tag is no longer stored, but membervar is used
@@ -1089,6 +1151,7 @@ void CKademliaUDPListener::Process2PublishKeyRequest(const uint8_t *packetData, 
 // Used in Kad2.0 only
 void CKademliaUDPListener::Process2PublishSourceRequest(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey)
 {
+	CHECK_PACKET_MIN_SIZE(16 + 16 + 1);
 	//Used Pointers
 	CIndexed *indexed = CKademlia::GetIndexed();
 
@@ -1099,6 +1162,7 @@ void CKademliaUDPListener::Process2PublishSourceRequest(const uint8_t *packetDat
 	}
 
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 16 + 1, __FUNCTION__);
 	CUInt128 file = bio.ReadUInt128();
 
 	CUInt128 distance(CKademlia::GetPrefs()->GetKadID());
@@ -1121,7 +1185,9 @@ void CKademliaUDPListener::Process2PublishSourceRequest(const uint8_t *packetDat
 		entry->m_bSource = false;
 		entry->m_tLifeTime = (uint32_t)time(nullptr) + KADEMLIAREPUBLISHTIMES;
 		bool addUDPPortTag = true;
-		uint32_t tags = bio.ReadUInt8();
+		EnsureKadPayload(bio, 1, __FUNCTION__);
+		uint8_t tags = bio.ReadUInt8();
+		EnsureKadTagCount(tags, __FUNCTION__);
 		while (tags > 0) {
 			CTag* tag = bio.ReadTag();
 			if (tag) {
@@ -1249,7 +1315,9 @@ void CKademliaUDPListener::Process2PublishResponse(const uint8_t *packetData, ui
 // Used only by Kad2.0
 void CKademliaUDPListener::Process2SearchNotesRequest(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey)
 {
+	CHECK_PACKET_MIN_SIZE(16 + 8);
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 8, __FUNCTION__);
 	CUInt128 target = bio.ReadUInt128();
 	uint64_t fileSize = bio.ReadUInt64();
 	CKademlia::GetIndexed()->SendValidNoteResult(target, ip, port, fileSize, senderKey);
@@ -1272,6 +1340,7 @@ void CKademliaUDPListener::ProcessSearchNotesResponse(const uint8_t *packetData,
 // Used only by Kad2.0
 void CKademliaUDPListener::Process2PublishNotesRequest(const uint8_t *packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey)
 {
+	CHECK_PACKET_MIN_SIZE(16 + 16 + 1);
 	// check if we are UDP firewalled
 	if (CUDPFirewallTester::IsFirewalledUDP(true)) {
 		//We are firewalled. We should not index this entry and give publisher a false report.
@@ -1279,6 +1348,7 @@ void CKademliaUDPListener::Process2PublishNotesRequest(const uint8_t *packetData
 	}
 
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16, __FUNCTION__);
 	CUInt128 target = bio.ReadUInt128();
 
 	CUInt128 distance(CKademlia::GetPrefs()->GetKadID());
@@ -1288,6 +1358,7 @@ void CKademliaUDPListener::Process2PublishNotesRequest(const uint8_t *packetData
 		return;
 	}
 
+	EnsureKadPayload(bio, 16, __FUNCTION__);
 	CUInt128 source = bio.ReadUInt128();
 
 	Kademlia::CEntry* entry = new Kademlia::CEntry();
@@ -1297,14 +1368,16 @@ void CKademliaUDPListener::Process2PublishNotesRequest(const uint8_t *packetData
 		entry->m_uKeyID = target;
 		entry->m_uSourceID = source;
 		entry->m_bSource = false;
-		uint32_t tags = bio.ReadUInt8();
+		EnsureKadPayload(bio, 1, __FUNCTION__);
+		uint8_t tags = bio.ReadUInt8();
+		EnsureKadTagCount(tags, __FUNCTION__);
 		while (tags > 0) {
 			CTag* tag = bio.ReadTag();
 			if(tag) {
-				if (!tag->GetName().Cmp(TAG_FILENAME)) {
-					if (entry->GetCommonFileName().IsEmpty()) {
-						entry->SetFileName(tag->GetStr());
-					}
+			if (!tag->GetName().Cmp(TAG_FILENAME)) {
+				if (entry->GetCommonFileName().IsEmpty()) {
+					entry->SetFileName(SanitizeFileName(tag->GetStr()).GetPrintable());
+				}
 					delete tag;
 				} else if (!tag->GetName().Cmp(TAG_FILESIZE)) {
 					if (entry->m_uSize == 0) {
@@ -1345,6 +1418,7 @@ void CKademliaUDPListener::ProcessFirewalledRequest(const uint8_t *packetData, u
 	CHECK_PACKET_EXACT_SIZE(2);
 
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 2, __FUNCTION__);
 	uint16_t tcpport = bio.ReadUInt16();
 
 	CUInt128 zero;
@@ -1368,6 +1442,7 @@ void CKademliaUDPListener::ProcessFirewalled2Request(const uint8_t *packetData, 
 	CHECK_PACKET_MIN_SIZE(19);
 
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 2 + 1, __FUNCTION__);
 	uint16_t tcpPort = bio.ReadUInt16();
 	CUInt128 userID = bio.ReadUInt128();
 	uint8_t connectOptions = bio.ReadUInt8();
@@ -1397,6 +1472,7 @@ void CKademliaUDPListener::ProcessFirewalledResponse(const uint8_t *packetData, 
 	}
 
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 4, __FUNCTION__);
 	uint32_t firewalledIP = bio.ReadUInt32();
 
 	// Update con state only if something changes.
@@ -1436,6 +1512,7 @@ void CKademliaUDPListener::ProcessFindBuddyRequest(const uint8_t *packetData, ui
 	}
 
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 16 + 2, __FUNCTION__);
 	CUInt128 BuddyID = bio.ReadUInt128();
 	CUInt128 userID = bio.ReadUInt128();
 	uint16_t tcpport = bio.ReadUInt16();
@@ -1467,6 +1544,7 @@ void CKademliaUDPListener::ProcessFindBuddyResponse(const uint8_t *packetData, u
 	CHECK_TRACKED_PACKET(KADEMLIA_FINDBUDDY_REQ);
 
 	CMemFile bio(packetData, lenPacket);
+	EnsureKadPayload(bio, 16 + 16 + 2, __FUNCTION__);
 	CUInt128 check = bio.ReadUInt128();
 	check ^= CUInt128(true);
 	if (CKademlia::GetPrefs()->GetKadID() == check) {
@@ -1494,6 +1572,7 @@ void CKademliaUDPListener::ProcessCallbackRequest(const uint8_t *packetData, uin
 	CUpDownClient* buddy = theApp->clientlist->GetBuddy();
 	if (buddy != nullptr) {
 		CMemFile bio(packetData, lenPacket);
+		EnsureKadPayload(bio, 16 + 16 + 2, __FUNCTION__);
 		CUInt128 check = bio.ReadUInt128();
 		// JOHNTODO: Begin filtering bad buddy ID's..
 		// CUInt128 bud(buddy->GetBuddyID());

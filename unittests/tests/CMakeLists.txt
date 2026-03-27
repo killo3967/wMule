@@ -154,6 +154,69 @@ target_link_libraries (PathTraversalTest
 	muleunit
 )
 
+add_executable (ClientUDPTest
+	ClientUDPTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME ClientUDPTest
+	COMMAND ClientUDPTest
+)
+
+target_include_directories (ClientUDPTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (ClientUDPTest
+	muleunit
+)
+
+add_executable (KadPacketGuardsTest
+	KadPacketGuardsTest.cpp
+	${CMAKE_SOURCE_DIR}/src/MemFile.cpp
+	${CMAKE_SOURCE_DIR}/src/SafeFile.cpp
+	${CMAKE_SOURCE_DIR}/src/Tag.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME KadPacketGuardsTest
+	COMMAND KadPacketGuardsTest
+)
+
+target_include_directories (KadPacketGuardsTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (KadPacketGuardsTest
+	muleunit
+)
+
+add_executable (KadHandlerFuzzTest
+	KadHandlerFuzzTest.cpp
+	${CMAKE_SOURCE_DIR}/src/MemFile.cpp
+	${CMAKE_SOURCE_DIR}/src/SafeFile.cpp
+	${CMAKE_SOURCE_DIR}/src/Tag.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME KadHandlerFuzzTest
+	COMMAND KadHandlerFuzzTest
+)
+
+target_include_directories (KadHandlerFuzzTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (KadHandlerFuzzTest
+	muleunit
+)
+
 add_executable (RangeMapTest
 	RangeMapTest.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
@@ -171,6 +234,62 @@ target_include_directories (RangeMapTest
 target_link_libraries (RangeMapTest
 	muleunit
 )
+
+add_executable (UPnPUrlUtilsTest
+	UPnPUrlUtilsTest.cpp
+	${CMAKE_SOURCE_DIR}/src/UPnPUrlUtils.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+)
+
+add_test (NAME UPnPUrlUtilsTest
+	COMMAND UPnPUrlUtilsTest
+)
+
+target_include_directories (UPnPUrlUtilsTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (UPnPUrlUtilsTest
+	muleunit
+)
+
+if (WIN32)
+	target_link_libraries (UPnPUrlUtilsTest
+		ws2_32
+	)
+endif()
+
+if (ENABLE_UPNP)
+	add_executable (UPnPXmlSafetyTest
+		UPnPXmlSafetyTest.cpp
+		${CMAKE_SOURCE_DIR}/src/UPnPEventLog.cpp
+		${CMAKE_SOURCE_DIR}/src/UPnPUrlUtils.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	)
+
+	add_test (NAME UPnPXmlSafetyTest
+		COMMAND UPnPXmlSafetyTest
+	)
+
+	target_include_directories (UPnPXmlSafetyTest
+		PRIVATE ${CMAKE_SOURCE_DIR}/src
+		PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	)
+
+	target_link_libraries (UPnPXmlSafetyTest
+		muleunit
+		IXML::Shared
+	)
+
+	if (WIN32)
+		target_link_libraries (UPnPXmlSafetyTest
+			ws2_32
+		)
+	endif()
+endif()
 
 add_executable (StringFunctionsTest
 	StringFunctionsTest.cpp

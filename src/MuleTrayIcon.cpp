@@ -295,7 +295,7 @@ wxMenu* CMuleTrayIcon::CreatePopupMenu()
 
 	// Dynamically creates the menu to show the user.
 	wxMenu *traymenu = new wxMenu();
-	traymenu->SetTitle(_("aMule Tray Menu"));
+	traymenu->SetTitle(_("wMule Tray Menu"));
 
 	// Build the Top string name
 	wxString label = MOD_VERSION_LONG;
@@ -514,10 +514,10 @@ wxMenu* CMuleTrayIcon::CreatePopupMenu()
 
 	if (theApp->amuledlg->IsShown()) {
 		//hide item
-		traymenu->Append(TRAY_MENU_HIDE, _("Hide aMule"));
+		traymenu->Append(TRAY_MENU_HIDE, _("Hide wMule"));
 	} else {
 		//show item
-		traymenu->Append(TRAY_MENU_SHOW, _("Show aMule"));
+		traymenu->Append(TRAY_MENU_SHOW, _("Show wMule"));
 	}
 
 	// Separator

@@ -60,7 +60,8 @@ public:
 	wxString m_TemplateName;
 	wxString m_TemplateDir;
 	bool	m_UseGzip;
-	CMD4Hash m_AdminPass, m_GuestPass;
+	wxString m_AdminPass;
+	wxString m_GuestPass;
 	bool	m_AllowGuest;
 
 	long		m_WebserverPort;

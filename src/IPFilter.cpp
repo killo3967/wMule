@@ -374,9 +374,9 @@ CIPFilter::CIPFilter() :
 	// Setup dummy files for the curious user.
 	const wxString normalDat = thePrefs::GetConfigDir() + wxT("ipfilter.dat");
 	const wxString normalMsg = wxString()
-		<< wxT("# This file is used by aMule to store ipfilter lists downloaded\n")
+		<< wxT("# This file is used by wMule to store ipfilter lists downloaded\n")
 		<< wxT("# through the auto-update functionality. Do not save ipfilter-\n")
-		<< wxT("# ranges here that should not be overwritten by aMule.\n");
+		<< wxT("# ranges here that should not be overwritten by wMule.\n");
 
 	if (CreateDummyFile(normalDat, normalMsg)) {
 		// redownload if user deleted file
@@ -386,10 +386,10 @@ CIPFilter::CIPFilter() :
 	const wxString staticDat = thePrefs::GetConfigDir() + wxT("ipfilter_static.dat");
 	const wxString staticMsg = wxString()
 		<< wxT("# This file is used to store ipfilter-ranges that should\n")
-		<< wxT("# not be overwritten by aMule. If you wish to keep a custom\n")
+		<< wxT("# not be overwritten by wMule. If you wish to keep a custom\n")
 		<< wxT("# set of ipfilter-ranges that take precedence over ipfilter-\n")
 		<< wxT("# ranges acquired through the auto-update functionality, then\n")
-		<< wxT("# place them in this file. aMule will not change this file.");
+		<< wxT("# place them in this file. wMule will not change this file.");
 
 	CreateDummyFile(staticDat, staticMsg);
 

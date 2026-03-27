@@ -37,6 +37,7 @@
 #include "SharedFileList.h"	// Needed for CSharedFileList
 #include "OtherFunctions.h"
 #include "MuleColour.h"
+#include <common/Path.h>
 
 #define ID_MY_TIMER 1652
 
@@ -273,10 +274,16 @@ void CFileDetailDialog::OnBnClickedOk(wxCommandEvent& evt)
 
 void CFileDetailDialog::OnBnClickedApply(wxCommandEvent& WXUNUSED(evt))
 {
-	CPath fileName = CPath(CastChild(IDC_FILENAME, wxTextCtrl)->GetValue());
+	const wxString requestedName = CastChild(IDC_FILENAME, wxTextCtrl)->GetValue();
 
-	if (fileName.IsOk() && (fileName != m_file->GetFileName())) {
-		if (theApp->sharedfiles->RenameFile(m_file, fileName)) {
+	CPath sanitizedName;
+	if (!NormalizeRenameTarget(requestedName, sanitizedName)) {
+		theApp->ShowAlert(_("Invalid file name."), _("File rename"), wxOK | wxICON_ERROR);
+		return;
+	}
+
+	if (sanitizedName != m_file->GetFileName()) {
+		if (theApp->sharedfiles->RenameFile(m_file, sanitizedName)) {
 			FindWindow(IDC_FNAME)->SetLabel(MakeStringEscaped(m_file->GetFileName().GetPrintable()));
 			FindWindow(IDC_METFILE)->SetLabel(m_file->GetFullName().GetPrintable());
 

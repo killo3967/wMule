@@ -2,6 +2,7 @@ add_library (mulecommon STATIC
 	FileFunctions.cpp
 	Format.cpp
 	MD5Sum.cpp
+	SecretHash.cpp
 	MuleDebug.cpp
 	Path.cpp
 	strerror_r.c
@@ -17,6 +18,7 @@ target_include_directories (mulecommon
 
 target_link_libraries (mulecommon
 	PUBLIC wxWidgets::BASE
+	PUBLIC cryptopp::cryptopp
 )
 
 if (WIN32)

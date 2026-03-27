@@ -38,6 +38,7 @@
 
 #include <ec/cpp/ECFileConfig.h>	// Needed for CECFileConfig
 #include <common/MD5Sum.h>
+#include <common/SecretHash.h>
 
 
 #include "WebServer.h"
@@ -59,7 +60,7 @@ IMPLEMENT_APP(CamulewebApp)
 
 DEFINE_LOCAL_EVENT_TYPE(MULE_EVT_NOTIFY)
 
-BEGIN_EVENT_TABLE(CamulewebApp, CwMuleExternalConnector)
+BEGIN_EVENT_TABLE(CamulewebApp, CaMuleExternalConnector)
 	EVT_MULE_NOTIFY(CamulewebApp::OnNotifyEvent)
 END_EVENT_TABLE()
 
@@ -229,7 +230,7 @@ bool CamulewebApp::GetTemplateDir(const wxString& templateName, wxString& templa
 
 void CamulewebApp::OnInitCmdLine(wxCmdLineParser& amuleweb_parser)
 {
-	CwMuleExternalConnector::OnInitCmdLine(amuleweb_parser, "amuleweb");
+	CaMuleExternalConnector::OnInitCmdLine(amuleweb_parser, "amuleweb");
 	amuleweb_parser.AddOption(wxT("t"), wxT("template"),
 		_("Loads template <str>"),
 		wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
@@ -271,11 +272,11 @@ void CamulewebApp::OnInitCmdLine(wxCmdLineParser& amuleweb_parser)
 		wxCMD_LINE_PARAM_OPTIONAL);
 
 	amuleweb_parser.AddSwitch(wxT("L"), wxT("load-settings"),
-		_("Load/save web server settings from/to remote aMule"),
+		_("Load/save web server settings from/to remote wMule"),
 		wxCMD_LINE_PARAM_OPTIONAL);
 
 	amuleweb_parser.AddOption(wxEmptyString, wxT("amule-config-file"),
-		_("aMule config file path. DO NOT USE DIRECTLY!"),
+		_("wMule config file path. DO NOT USE DIRECTLY!"),
 		wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
 
 	/*
@@ -368,14 +369,14 @@ bool CamulewebApp::OnCmdLineParsed(wxCmdLineParser& parser)
 			if (tmp.IsEmpty()) {
 				m_AdminPass.Clear();
 			} else {
-				m_AdminPass.Decode(MD5Sum(tmp).GetHash());
+				m_AdminPass = SecretHash::BuildPBKDF2FromMD5(MD5Sum(tmp).GetHash());
 			}
 		}
 		if ( parser.Found(wxT("guest-pass"), &tmp) ) {
 			if (tmp.IsEmpty()) {
 				m_GuestPass.Clear();
 			} else {
-				m_GuestPass.Decode(MD5Sum(tmp).GetHash());
+				m_GuestPass = SecretHash::BuildPBKDF2FromMD5(MD5Sum(tmp).GetHash());
 			}
 		}
 
@@ -389,7 +390,7 @@ bool CamulewebApp::OnCmdLineParsed(wxCmdLineParser& parser)
 
 const wxString CamulewebApp::GetGreetingTitle()
 {
-	return _("aMule Web Server");
+	return _("wMule Web Server");
 }
 
 
@@ -416,8 +417,28 @@ void CamulewebApp::LoadAmuleConfig(CECFileConfig& cfg)
 	CaMuleExternalConnector::LoadAmuleConfig(cfg);
 	m_UseGzip = (cfg.Read(wxT("/WebServer/UseGzip"), 0l) == 1l);
 	m_AllowGuest = (cfg.Read(wxT("/WebServer/UseLowRightsUser"), 0l) == 1l);
-	cfg.ReadHash(wxT("/WebServer/Password"), &m_AdminPass);
-	cfg.ReadHash(wxT("/WebServer/PasswordLow"), &m_GuestPass);
+	wxString adminStored = cfg.Read(wxT("/WebServer/Password"), wxEmptyString);
+	if (adminStored.IsEmpty()) {
+		CMD4Hash legacy;
+		cfg.ReadHash(wxT("/WebServer/Password"), &legacy);
+		adminStored = legacy.Encode();
+	}
+	bool migrated = false;
+	m_AdminPass = SecretHash::NormalizeStoredSecret(adminStored, migrated);
+	if (migrated) {
+		cfg.Write(wxT("/WebServer/Password"), m_AdminPass);
+	}
+	wxString guestStored = cfg.Read(wxT("/WebServer/PasswordLow"), wxEmptyString);
+	if (guestStored.IsEmpty()) {
+		CMD4Hash legacy;
+		cfg.ReadHash(wxT("/WebServer/PasswordLow"), &legacy);
+		guestStored = legacy.Encode();
+	}
+	migrated = false;
+	m_GuestPass = SecretHash::NormalizeStoredSecret(guestStored, migrated);
+	if (migrated) {
+		cfg.Write(wxT("/WebServer/PasswordLow"), m_GuestPass);
+	}
 	m_WebserverPort = cfg.Read(wxT("/WebServer/Port"), 4711l);
 	m_UPnPWebServerEnabled =
 		(cfg.Read(wxT("/Webserver/UPnPWebServerEnabled"), 0l) == 1l);
@@ -439,8 +460,28 @@ void CamulewebApp::LoadConfigFile()
 		m_TemplateName = m_configFile->Read(wxT("/Webserver/Template"), wxEmptyString);
 		m_configFile->Read(wxT("/Webserver/UseGzip"), &m_UseGzip, false);
 		m_configFile->Read(wxT("/Webserver/AllowGuest"), &m_AllowGuest, false);
-		m_configFile->ReadHash(wxT("/Webserver/AdminPassword"), &m_AdminPass);
-		m_configFile->ReadHash(wxT("/Webserver/GuestPassword"), &m_GuestPass);
+		wxString adminStored = m_configFile->Read(wxT("/Webserver/AdminPassword"), wxEmptyString);
+		if (adminStored.IsEmpty()) {
+			CMD4Hash legacy;
+			m_configFile->ReadHash(wxT("/Webserver/AdminPassword"), &legacy);
+			adminStored = legacy.Encode();
+		}
+		bool migrated = false;
+		m_AdminPass = SecretHash::NormalizeStoredSecret(adminStored, migrated);
+		if (migrated) {
+			m_configFile->Write(wxT("/Webserver/AdminPassword"), m_AdminPass);
+		}
+		wxString guestStored = m_configFile->Read(wxT("/Webserver/GuestPassword"), wxEmptyString);
+		if (guestStored.IsEmpty()) {
+			CMD4Hash legacy;
+			m_configFile->ReadHash(wxT("/Webserver/GuestPassword"), &legacy);
+			guestStored = legacy.Encode();
+		}
+		migrated = false;
+		m_GuestPass = SecretHash::NormalizeStoredSecret(guestStored, migrated);
+		if (migrated) {
+			m_configFile->Write(wxT("/Webserver/GuestPassword"), m_GuestPass);
+		}
 		m_PageRefresh = m_configFile->Read(wxT("/Webserver/PageRefreshTime"), 120l);
 	}
 }
@@ -457,8 +498,8 @@ void CamulewebApp::SaveConfigFile()
 		m_configFile->Write(wxT("/Webserver/Template"), m_TemplateName);
 		m_configFile->Write(wxT("/Webserver/UseGzip"), m_UseGzip);
 		m_configFile->Write(wxT("/Webserver/AllowGuest"), m_AllowGuest);
-		m_configFile->WriteHash(wxT("/Webserver/AdminPassword"), m_AdminPass);
-		m_configFile->WriteHash(wxT("/Webserver/GuestPassword"), m_GuestPass);
+		m_configFile->Write(wxT("/Webserver/AdminPassword"), m_AdminPass);
+		m_configFile->Write(wxT("/Webserver/GuestPassword"), m_GuestPass);
 	}
 }
 

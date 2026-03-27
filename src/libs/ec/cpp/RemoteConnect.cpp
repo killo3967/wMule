@@ -27,6 +27,7 @@
 
 #include <common/SmartPtr.h>	// Needed for CSmartPtr
 #include <common/MD5Sum.h>
+#include <common/SecretHash.h>
 #include <common/Format.h>
 #include "../../../amuleIPV4Address.h"
 
@@ -249,6 +250,26 @@ bool CRemoteConnect::ProcessAuthPacket(const CECPacket *reply) {
 		if ((m_ec_state == EC_REQ_SENT) && (reply->GetOpCode() == EC_OP_AUTH_SALT)) {
 				const CECTag *passwordSalt = reply->GetTagByName(EC_TAG_PASSWD_SALT);
 				if ( nullptr != passwordSalt) {
+					const CECTag *pbkdf2Tag = reply->GetTagByName(EC_TAG_PBKDF2_PARAMS);
+					if (pbkdf2Tag) {
+						wxArrayString pieces = wxSplit(pbkdf2Tag->GetStringData(), ':');
+						unsigned long iterations = 0;
+						if (pieces.size() == 2 && pieces[0].ToULong(&iterations)) {
+							wxString derived;
+							if (!SecretHash::DeriveDigestFromMD5(m_connectionPassword, static_cast<unsigned int>(iterations), pieces[1], derived)) {
+								m_server_reply = _("External Connection: Invalid PBKDF2 parameters received.");
+								m_ec_state = EC_FAIL;
+								CloseSocket();
+								return false;
+							}
+							m_connectionPassword = derived;
+						} else {
+							m_server_reply = _("External Connection: Invalid PBKDF2 parameters received.");
+							m_ec_state = EC_FAIL;
+							CloseSocket();
+							return false;
+						}
+					}
 					wxString saltHash = MD5Sum(CFormat(wxT("%lX")) % passwordSalt->GetInt()).GetHash();
 					m_connectionPassword = MD5Sum(m_connectionPassword.Lower() + saltHash).GetHash();
 					m_ec_state = EC_SALT_RECEIVED;
@@ -262,7 +283,7 @@ bool CRemoteConnect::ProcessAuthPacket(const CECPacket *reply) {
 			m_ec_state = EC_OK;
 			result = true;
 			if (reply->GetTagByName(EC_TAG_SERVER_VERSION)) {
-				m_server_reply = _("Succeeded! Connection established to aMule ") +
+			m_server_reply = _("Succeeded! Connection established to wMule ") +
 					reply->GetTagByName(EC_TAG_SERVER_VERSION)->GetStringData();
 			} else {
 				m_server_reply = _("Succeeded! Connection established.");

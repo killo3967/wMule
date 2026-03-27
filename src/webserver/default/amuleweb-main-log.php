@@ -1,7 +1,7 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
 <head>
-<title>aMule control panel</title>
+<title>wMule control panel</title>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 
 <script language="JavaScript" type="text/JavaScript">
@@ -216,7 +216,7 @@ function init_data()
   <tr align="center" valign="top"> 
     <td colspan="2">        <table width="100%" border="0" cellspacing="0" cellpadding="0">
           <caption>
-          AMULE LOG 
+          WMULE LOG 
           </caption>
           <tr> 
             <td width="24"><img src="images/tab_top_left.png" width="24" height="24"></td>
@@ -231,8 +231,8 @@ function init_data()
                 <!--DWLayoutTable-->
                 <tr valign="top"> 
                   <td>
-		<h1 style="display:inline;">aMule log</h1>
-		<a href="log.php?rstlog=1" target="logframe" onclick="return confirm('Do you really want to reset aMule log?')">(Reset log)</a><br>
+		<h1 style="display:inline;">wMule log</h1>
+		<a href="log.php?rstlog=1" target="logframe" onclick="return confirm('Do you really want to reset the wMule log?')">(Reset log)</a><br>
 	<iframe width="100%" height="400" name="logframe" src="log.php"></iframe>
                   </td>
                   </tr><tr>

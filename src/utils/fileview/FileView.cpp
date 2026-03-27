@@ -78,7 +78,7 @@ void CFileView::OnInitCmdLine(wxCmdLineParser& parser)
 bool CFileView::OnCmdLineParsed(wxCmdLineParser& parser)
 {
 	if (parser.Found(wxT("version"))) {
-		cout << wxString::Format(wxT("MuleFileView version %u.%u.%u\nCopyright (c) 2008-2011 aMule Team\n"), VERSION_MAJOR, VERSION_MINOR, VERSION_MICRO);
+		cout << wxString::Format(wxT("MuleFileView version %u.%u.%u\nCopyright (c) 2008-2011 aMule Team / maintained by the wMule project\n"), VERSION_MAJOR, VERSION_MINOR, VERSION_MICRO);
 		return false;
 	} else {
 		wxString strDecode;

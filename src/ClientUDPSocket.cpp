@@ -50,6 +50,7 @@
 #include "kademlia/utils/KadUDPKey.h"
 #include <zlib.h>
 #include "EncryptedDatagramSocket.h"
+#include "ClientUDPGuards.h"
 
 //
 // CClientUDPSocket -- Extended eMule UDP socket
@@ -84,6 +85,11 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t* buffer,
 	uint32_t senderVerifyKey;
 	int packetLen = CEncryptedDatagramSocket::DecryptReceivedClient(buffer, length, &decryptedBuffer, ip, &receiverVerifyKey, &senderVerifyKey);
 
+	if (packetLen < 2) {
+		AddDebugLogLineN(logClientUDP, wxT("Discarding UDP packet shorter than protocol/opcode header"));
+		return;
+	}
+
 	uint8_t protocol = decryptedBuffer[0];
 	uint8_t opcode	 = decryptedBuffer[1];
 
@@ -106,15 +112,31 @@ void CClientUDPSocket::OnPacketReceived(uint32 ip, uint16 port, uint8_t* buffer,
 				case OP_KADEMLIAPACKEDPROT:
 					theStats::AddDownOverheadKad(length);
 					if (packetLen >= 2) {
-						uint32_t newSize = packetLen * 10 + 300; // Should be enough...
-						std::vector<uint8_t> unpack(newSize);
-						uLongf unpackedsize = newSize - 2;
-						uint16_t result = uncompress(&(unpack[2]), &unpackedsize, decryptedBuffer + 2, packetLen - 2);
-						if (result == Z_OK) {
+						const size_t compressedSize = packetLen - 2;
+					if (!ClientUDPGuards::IsCompressedPayloadValid(compressedSize)) {
+						AddDebugLogLineN(logClientKadUDP,
+							CFormat(wxT("Discarding compressed Kad packet: compressed payload (%u bytes) exceeds limit (%u)"))
+							% static_cast<uint32>(compressedSize)
+							% static_cast<uint32>(ClientUDPGuards::MAX_KAD_UNCOMPRESSED_PACKET));
+						break;
+					}
+					std::vector<uint8_t> unpack(ClientUDPGuards::MAX_KAD_UNCOMPRESSED_PACKET + 2);
+					uLongf unpackedSize = ClientUDPGuards::MAX_KAD_UNCOMPRESSED_PACKET;
+						int zResult = uncompress(&(unpack[2]), &unpackedSize, decryptedBuffer + 2, packetLen - 2);
+						if (zResult == Z_OK) {
+						if (!ClientUDPGuards::IsUncompressedPayloadValid(unpackedSize)) {
+							AddDebugLogLineN(logClientKadUDP,
+								CFormat(wxT("Discarding compressed Kad packet: uncompressed size (%u bytes) exceeds limit (%u)"))
+								% static_cast<uint32>(unpackedSize)
+								% static_cast<uint32>(ClientUDPGuards::MAX_KAD_UNCOMPRESSED_PACKET));
+							break;
+						}
 							AddDebugLogLineN(logClientKadUDP, wxT("Correctly uncompressed Kademlia packet"));
 							unpack[0] = OP_KADEMLIAHEADER;
 							unpack[1] = opcode;
-							Kademlia::CKademlia::ProcessPacket(&(unpack[0]), unpackedsize + 2, wxUINT32_SWAP_ALWAYS(ip), port, (Kademlia::CPrefs::GetUDPVerifyKey(ip) == receiverVerifyKey), Kademlia::CKadUDPKey(senderVerifyKey, theApp->GetPublicIP(false)));
+							Kademlia::CKademlia::ProcessPacket(&(unpack[0]), unpackedSize + 2, wxUINT32_SWAP_ALWAYS(ip), port, (Kademlia::CPrefs::GetUDPVerifyKey(ip) == receiverVerifyKey), Kademlia::CKadUDPKey(senderVerifyKey, theApp->GetPublicIP(false)));
+						} else if (zResult == Z_BUF_ERROR) {
+							AddDebugLogLineN(logClientKadUDP, wxT("Discarding compressed Kad packet: buffer limit reached"));
 						} else {
 							AddDebugLogLineN(logClientKadUDP, wxT("Failed to uncompress Kademlia packet"));
 						}

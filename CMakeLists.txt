@@ -3,7 +3,7 @@
 
 cmake_minimum_required (VERSION 3.15)
 
-project (wMule VERSION 1.0.0)
+project (wMule VERSION 1.0.1)
 
 # C++ Standard
 set(CMAKE_CXX_STANDARD 20)
@@ -77,6 +77,31 @@ endif ()
 
 if (wx_NEEDED)
 	include (cmake/wx.cmake)
+endif ()
+
+if (ENABLE_UPNP)
+	function(_wmule_filter_upnp_import target fallback_include)
+		if (TARGET ${target})
+			get_target_property(_wmule_iface_dirs ${target} INTERFACE_INCLUDE_DIRECTORIES)
+			if (_wmule_iface_dirs AND NOT _wmule_iface_dirs STREQUAL "_wmule_iface_dirs-NOTFOUND")
+				list(FILTER _wmule_iface_dirs EXCLUDE REGEX "[\\/](COMPONENT|UPNP_Development)$")
+				if (NOT _wmule_iface_dirs)
+					list(APPEND _wmule_iface_dirs "${fallback_include}")
+				endif()
+				set_property(TARGET ${target} PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${_wmule_iface_dirs}")
+			endif()
+		endif()
+	endfunction()
+
+	set(UPNP_DIR "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/libupnp")
+	set(IXML_DIR "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/libupnp")
+	set(PThreads4W_DIR "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/pthreads4w")
+	find_package(UPNP CONFIG REQUIRED)
+	find_package(IXML CONFIG REQUIRED)
+	find_package(PThreads4W CONFIG REQUIRED)
+	set(_wmule_upnp_include "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include/upnp")
+	_wmule_filter_upnp_import(UPNP::Shared "${_wmule_upnp_include}")
+	_wmule_filter_upnp_import(IXML::Shared "${_wmule_upnp_include}")
 endif ()
 
 # Find cryptopp (required for EC protocol)

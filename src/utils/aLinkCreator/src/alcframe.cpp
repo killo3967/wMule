@@ -48,6 +48,8 @@
 #include <wx/uri.h>
 #include <wx/url.h>
 
+#include <common/Path.h>
+
 #ifdef __WINDOWS__
 	#include <winerror.h>
 	#include <shlobj.h>
@@ -364,7 +366,13 @@ AlcFrame::SetFileToHash()
 
   if (!filename.empty ())
     {
-      m_inputFileTextCtrl->SetValue(filename);
+      wxString normalized;
+      if (NormalizeAbsolutePath(filename, normalized)) {
+        m_inputFileTextCtrl->SetValue(normalized);
+      } else {
+        wxMessageBox(_("The selected file path is not a valid absolute file."),
+          _("Invalid path"), wxOK | wxICON_ERROR, this);
+      }
     }
 }
 
@@ -434,12 +442,17 @@ AlcFrame::SaveEd2kLinkToFile()
 
       if (!filename.empty ())
         {
+          wxString normalized;
+          if (!NormalizeAbsolutePath(filename, normalized)) {
+            SetStatusText(_("Please, enter a valid absolute file name"));
+            return;
+          }
           // Open file and let wxFile destructor close the file
           // Closing it explicitly may crash on Win32 ...
-          wxFile file(filename,wxFile::write_append);
+          wxFile file(normalized,wxFile::write_append);
           if (! file.IsOpened())
             {
-              SetStatusText (_("Unable to open ") + filename);
+              SetStatusText (_("Unable to open ") + normalized);
               return;
             }
           file.Write(link + wxTextFile::GetEOL());
@@ -460,7 +473,7 @@ void
 AlcFrame::OnBarAbout (wxCommandEvent & WXUNUSED(event))
 {
   wxMessageBox (_
-                ("aLinkCreator, the aMule eD2k link creator\n\n(c) 2004 ThePolish <thepolish@vipmail.ru>\n\nPixmaps from http://www.everaldo.com and http://www.icomania.com\nand http://jimmac.musichall.cz/ikony.php3\n\nDistributed under GPL"),
+			("aLinkCreator, the wMule eD2k link creator\n\n(c) 2004 ThePolish <thepolish@vipmail.ru>\n\nPixmaps from http://www.everaldo.com and http://www.icomania.com\nand http://jimmac.musichall.cz/ikony.php3\n\nDistributed under GPL"),
                 _("About aLinkCreator"), wxOK | wxCENTRE | wxICON_INFORMATION);
 }
 

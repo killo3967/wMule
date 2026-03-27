@@ -41,6 +41,23 @@
 
 static unsigned s_nextJobId = 0;
 
+namespace
+{
+bool IsFolderUnderRoot(const CPath& root, const CPath& folder)
+{
+	if (!root.IsOk()) {
+		return false;
+	}
+	return IsSubPathOf(root, folder);
+}
+
+
+bool ShouldAllowDeleteSource(const CPath& folder, const CPath& tempDir, const CPath& incomingDir)
+{
+	return IsFolderUnderRoot(tempDir, folder) || IsFolderUnderRoot(incomingDir, folder);
+}
+}
+
 
 struct ConvertJob {
 	unsigned	id;
@@ -69,15 +86,26 @@ std::list<ConvertJob*>	CPartFileConvert::s_jobs;
 ConvertJob*		CPartFileConvert::s_pfconverting = nullptr;
 wxMutex			CPartFileConvert::s_mutex;
 
+bool CPartFileConvert::CanDeleteSource(const CPath& folder)
+{
+	return ShouldAllowDeleteSource(folder, thePrefs::GetTempDir(), thePrefs::GetIncomingDir());
+}
+
 
 int CPartFileConvert::ScanFolderToAdd(const CPath& folder, bool deletesource)
 {
+	bool allowDeletion = deletesource && CanDeleteSource(folder);
+	if (deletesource && !allowDeletion) {
+		AddLogLineCS(CFormat(_("Source removal disabled for folder outside Temp/Incoming: %s"))
+			% folder.GetPrintable());
+	}
+
 	int count = 0;
 	CDirIterator finder(folder);
 
 	CPath file = finder.GetFirstFile(CDirIterator::File, wxT("*.part.met"));
 	while (file.IsOk()) {
-		ConvertToeMule(folder.JoinPaths(file), deletesource);
+		ConvertToeMule(folder.JoinPaths(file), allowDeletion);
 		file = finder.GetNextFile();
 		count++;
 	}
@@ -92,7 +120,7 @@ int CPartFileConvert::ScanFolderToAdd(const CPath& folder, bool deletesource)
 
 	file = finder.GetFirstFile(CDirIterator::Dir, wxT("*.*"));
 	while (file.IsOk()) {
-		ScanFolderToAdd(folder.JoinPaths(file), deletesource);
+		ScanFolderToAdd(folder.JoinPaths(file), allowDeletion);
 
 		file = finder.GetNextFile();
 	}
@@ -228,6 +256,11 @@ ConvStatus CPartFileConvert::performConvertToeMule(const CPath& fileName)
 	CPath folder	= fileName.GetPath();
 	CPath partfile	= fileName.GetFullName();
 	CPath newfilename;
+	if (s_pfconverting->removeSource && !CanDeleteSource(folder)) {
+		AddLogLineCS(CFormat(_("Source removal disabled for job outside Temp/Incoming: %s"))
+			% folder.GetPrintable());
+		s_pfconverting->removeSource = false;
+	}
 
 	CDirIterator finder(folder);
 

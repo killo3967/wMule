@@ -27,9 +27,24 @@
 
 #include <ec/cpp/ECTag.h>		// Needed for CECTag
 #include <ec/cpp/ECSpecialTags.h>	// Needed for special EC tag creator classes
+#include <common/Path.h>
 
+#include "Logger.h"
 #include "Preferences.h"
 #include "amule.h"
+
+namespace
+{
+bool NormalizeRemoteDirectory(const wxString& rawPath, wxString& normalized, const wxString& contextLabel)
+{
+	if (!NormalizeSharedPath(rawPath, normalized)) {
+		AddLogLineCS(wxString::Format(_("External connection rejected invalid path '%s' for %s; keeping previous value."),
+			rawPath, contextLabel));
+		return false;
+	}
+	return true;
+}
+}
 
 CEC_Category_Tag::CEC_Category_Tag(uint32 cat_index, EC_DETAIL_LEVEL detail_level) : CECTag(EC_TAG_CATEGORY, cat_index)
 {
@@ -61,7 +76,16 @@ CEC_Category_Tag::CEC_Category_Tag(uint32 cat_index, wxString name, wxString pat
 
 bool CEC_Category_Tag::Apply()
 {
-	bool ret = theApp->glob_prefs->UpdateCategory(GetInt(), Name(), CPath(Path()), Comment(), Color(), Prio());
+	wxString normalizedPath;
+	const wxString rawPath = Path();
+	if (!NormalizeCategoryPath(rawPath, normalizedPath)) {
+		AddLogLineCS(wxString::Format(_("External connection rejected invalid category path '%s'; keeping previous value."),
+			rawPath));
+		GetTagByName(EC_TAG_CATEGORY_PATH)->SetStringData(theApp->glob_prefs->GetCatPath(GetInt()).GetRaw());
+		return false;
+	}
+
+	bool ret = theApp->glob_prefs->UpdateCategory(GetInt(), Name(), CPath(normalizedPath), Comment(), Color(), Prio());
 	if (!ret) {
 		GetTagByName(EC_TAG_CATEGORY_PATH)->SetStringData(theApp->glob_prefs->GetCatPath(GetInt()).GetRaw());
 	}
@@ -70,8 +94,17 @@ bool CEC_Category_Tag::Apply()
 
 bool CEC_Category_Tag::Create()
 {
+	wxString normalizedPath;
+	const wxString rawPath = Path();
+	if (!NormalizeCategoryPath(rawPath, normalizedPath)) {
+		AddLogLineCS(wxString::Format(_("External connection rejected invalid category path '%s'; keeping previous value."),
+			rawPath));
+		GetTagByName(EC_TAG_CATEGORY_PATH)->SetStringData(thePrefs::GetIncomingDir().GetRaw());
+		return false;
+	}
+
 	Category_Struct * category = nullptr;
-	bool ret = theApp->glob_prefs->CreateCategory(category, Name(), CPath(Path()), Comment(), Color(), Prio());
+	bool ret = theApp->glob_prefs->CreateCategory(category, Name(), CPath(normalizedPath), Comment(), Color(), Prio());
 	if (!ret) {
 		GetTagByName(EC_TAG_CATEGORY_PATH)->SetStringData(theApp->glob_prefs->GetCatPath(
 			theApp->glob_prefs->GetCatCount() - 1).GetRaw());
@@ -501,17 +534,28 @@ void CEC_Prefs_Packet::Apply() const
 
 	if ((thisTab = GetTagByName(EC_TAG_PREFS_DIRECTORIES)) != nullptr) {
 		if ((oneTag = thisTab->GetTagByName(EC_TAG_DIRECTORIES_INCOMING)) != nullptr) {
-			thePrefs::SetIncomingDir(CPath(oneTag->GetStringData()));
-		}
-		if ((oneTag = thisTab->GetTagByName(EC_TAG_DIRECTORIES_TEMP)) != nullptr) {
-			thePrefs::SetTempDir(CPath(oneTag->GetStringData()));
-		}
-		if ((oneTag = thisTab->GetTagByName(EC_TAG_DIRECTORIES_SHARED)) != nullptr) {
-			theApp->glob_prefs->shareddir_list.clear();
-			for (CECTag::const_iterator it = oneTag->begin(); it != oneTag->end(); ++it) {
-				theApp->glob_prefs->shareddir_list.push_back(CPath(it->GetStringData()));
+			wxString normalized;
+			if (NormalizeRemoteDirectory(oneTag->GetStringData(), normalized, _( "incoming directory" ))) {
+				thePrefs::SetIncomingDir(CPath(normalized));
 			}
 		}
+		if ((oneTag = thisTab->GetTagByName(EC_TAG_DIRECTORIES_TEMP)) != nullptr) {
+			wxString normalized;
+			if (NormalizeRemoteDirectory(oneTag->GetStringData(), normalized, _( "temp directory" ))) {
+				thePrefs::SetTempDir(CPath(normalized));
+			}
+		}
+			if ((oneTag = thisTab->GetTagByName(EC_TAG_DIRECTORIES_SHARED)) != nullptr) {
+				CPreferences::PathList normalizedEntries;
+				normalizedEntries.reserve(oneTag->GetTagCount());
+				for (CECTag::const_iterator it = oneTag->begin(); it != oneTag->end(); ++it) {
+					wxString normalized;
+					if (NormalizeRemoteDirectory(it->GetStringData(), normalized, _( "shared directory entry" ))) {
+						normalizedEntries.push_back(CPath(normalized));
+					}
+				}
+				theApp->glob_prefs->shareddir_list = CPreferences::SanitizeSharedDirectories(normalizedEntries);
+			}
 		ApplyBoolean(use_tag, thisTab, thePrefs::SetShareHiddenFiles, EC_TAG_DIRECTORIES_SHARE_HIDDEN);
 	}
 

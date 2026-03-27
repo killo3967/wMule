@@ -1,9 +1,9 @@
 # wMule Build Memory - AI Agent Documentation
 
 **Project:** wMule (Windows Mule)  
-**Version:** 1.0.0  
+**Version:** 1.0.1  
 **Base:** aMule 2.4.0  
-**Date:** 2026-03-24  
+**Date:** 2026-03-27  
 **Author:** Tomas Platero  
 
 ---
@@ -62,6 +62,27 @@ The variable `${amule_BINARY_DIR}` was used but never defined because the projec
 
 ### Problem: Executable Names
 **Solution:** Changed `add_executable (amule` → `add_executable (wmule` and similar for amulecmd
+
+---
+
+## Release 1.0.1 – 2026-03-27
+
+### Objetivo
+Cerrar el bloque de hardening de rutas (Fase 2 – Opción A) y publicar un build verificable después de comprobar conectividad completa.
+
+### Cambios principales
+- **Normalización centralizada** de rutas de categorías y compartidos desde GUI y EC/Web (solo se aceptan directorios bajo Incoming o raíces declaradas).
+- **Sanitización preventiva** en `PartFileConvert` y `Ed2kLinkParser`: rutas absolutas sin traversal, `deleteSource` limitado a Temp/Incoming y `ED2KLinks` siempre dentro del config dir normalizado.
+- **Protecciones adicionales**: rename helper (solo nombres base), guardas en `SharedFileList`/`DirectoryTreeCtrl`, filtros PBKDF2 activos en conectores remotos y logging neutro de descartes.
+
+### Validaciones
+- `cmake --build . --config Debug` (wmule.exe y wmulecmd.exe recién generados en `build/src/Debug`).
+- `ctest -R PathTraversalTest -C Debug --output-on-failure` para cubrir los helpers de rutas.
+- Smoke test manual de `wmule.exe`: conexión a servidores, búsquedas extendidas con filtro y descargas/compartidos en los nuevos directorios normalizados.
+
+### Resultado
+- Se etiqueta como **wMule 1.0.1**, nuevo baseline para continuar el resto de Fase 2.
+- Documentación (`AGENTS.md`, `PLAN_MODERNIZACION_2.0.md`, `CHANGELOG.md`) actualizada con el hito y las pruebas ejecutadas.
 
 ---
 
@@ -188,9 +209,9 @@ Any `.mo` placed under `wmule.exe` → `locale/<lang>/LC_MESSAGES/amule.mo` will
 
 From `src/include/common/ClientVersion.h`:
 ```cpp
-#define VERSION      1.0.0
-#define MOD_VERSION "1.0.0"
-#define MOD_VERSION_LONG "wMule 1.0.0"
+#define VERSION      1.0.1
+#define MOD_VERSION "1.0.1"
+#define MOD_VERSION_LONG "wMule 1.0.1"
 ```
 
 ---

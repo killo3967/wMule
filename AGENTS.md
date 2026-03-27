@@ -1,7 +1,7 @@
 # AGENTS.md - wMule Project Guidelines
 
 **Project:** wMule (Windows Mule)  
-**Version:** 1.0.0 (fork of aMule 2.4.0)  
+**Version:** 1.0.1 (fork of aMule 2.4.0)  
 **Platform:** Windows 11 x64 only  
 **License:** GPL v2+  
 **Build System:** CMake + vcpkg + MSVC 2022
@@ -10,7 +10,7 @@
 
 ## Reglas de Interacción para Agentes
 
-- Responder **siempre en español**.
+- Responder **siempre en español de españa**.
 - Asumir **Windows 11** como sistema operativo de trabajo.
 - Preferir **PowerShell** para ejemplos, comandos y automatización; **no asumir Bash** ni herramientas GNU instaladas.
 - Usar rutas de Windows (`K:\wMule`, `C:\vcpkg\...`) y quoting compatible con PowerShell.
@@ -415,7 +415,7 @@ Note: `compile_commands.json` vive en `build-ninja/`; apunta clangd a ese direct
 From `src/include/common/ClientVersion.h`:
 
 ```cpp
-#define VERSION      1.0.0
-#define MOD_VERSION "1.0.0"
-#define MOD_VERSION_LONG "wMule 1.0.0"
+#define VERSION      1.0.1
+#define MOD_VERSION "1.0.1"
+#define MOD_VERSION_LONG "wMule 1.0.1"
 ```

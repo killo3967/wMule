@@ -93,7 +93,7 @@ private:
 	void SendLegacyChallenge(uint32_t ip, uint16_t port, const CUInt128& contactID);
 
 	void ProcessSearchResponse		(CMemFile &bio);
-	void ProcessSearchResponse		(const uint8_t* packetData, uint32_t lenPacket);
+	void ProcessSearchResponse		(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip, uint16_t port);
 	void ProcessPublishResponse		(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip);
 	void ProcessSearchNotesResponse		(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip);
 	void ProcessFirewalledRequest		(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey);
@@ -116,7 +116,7 @@ private:
 	void Process2SearchNotesRequest		(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey);
 	void Process2SearchKeyRequest		(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey);
 	void Process2SearchSourceRequest	(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey);
-	void Process2SearchResponse		(const uint8_t* packetData, uint32_t lenPacket, const CKadUDPKey& senderKey);
+	void Process2SearchResponse		(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey);
 	void Process2PublishNotesRequest	(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey);
 	void Process2PublishKeyRequest		(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey);
 	void Process2PublishSourceRequest	(const uint8_t* packetData, uint32_t lenPacket, uint32_t ip, uint16_t port, const CKadUDPKey& senderKey);

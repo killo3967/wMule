@@ -208,15 +208,15 @@ void CamuleGuiBase::ResetTitle()
 {
 #ifdef SVNDATE
 	#ifdef CLIENT_GUI
-		m_FrameTitle = CFormat(wxT("aMule remote control %s %s")) % wxT( VERSION ) % wxT( SVNDATE );
+		m_FrameTitle = CFormat(wxT("wMule remote control %s %s")) % wxT( VERSION ) % wxT( SVNDATE );
 	#else
-		m_FrameTitle = CFormat(wxT("aMule %s %s")) % wxT( VERSION ) % wxT( SVNDATE );
+		m_FrameTitle = CFormat(wxT("wMule %s %s")) % wxT( VERSION ) % wxT( SVNDATE );
 	#endif
 #else
 	#ifdef CLIENT_GUI
-		m_FrameTitle = _("aMule remote control");
+		m_FrameTitle = _("wMule remote control");
 	#else
-		m_FrameTitle = _("aMule");
+		m_FrameTitle = _("wMule");
 	#endif
 
 	if (thePrefs::ShowVersionOnTitle()) {

@@ -27,6 +27,7 @@
 
 #include <common/Format.h>
 #include <common/Path.h>
+#include "amule.h"
 #include "DataToText.h"
 #include "OtherFunctions.h"
 #include "PartFileConvert.h"
@@ -203,12 +204,24 @@ void CPartFileConvertDlg::OnAddFolder(wxCommandEvent& WXUNUSED(event))
 		wxStandardPaths::Get().GetDocumentsDir(), wxDD_DEFAULT_STYLE,
 		wxDefaultPosition, this);
 	if (!folder.IsEmpty()) {
+		wxString normalized;
+		if (!NormalizeSharedPath(folder, normalized)) {
+			theApp->ShowAlert(CFormat(_("The path '%s' is not a valid absolute directory.")) % folder,
+				_("Invalid directory"), wxOK | wxICON_ERROR);
+			return;
+		}
 		int reply = wxMessageBox(_("Do you want the source files of successfully imported downloads be deleted?"),
 					 _("Remove sources?"),
 					 wxYES_NO | wxCANCEL | wxICON_QUESTION, this);
 		if (reply != wxCANCEL) {
+			bool deleteSources = (reply == wxYES);
+			if (deleteSources && !CPartFileConvert::CanDeleteSource(CPath(normalized))) {
+				theApp->ShowAlert(_("Source removal is only allowed for folders inside Temp or Incoming. Continuing without deleting sources."),
+					_("Remove sources?"), wxOK | wxICON_INFORMATION);
+				deleteSources = false;
+			}
 			// TODO: use notification
-			CPartFileConvert::ScanFolderToAdd(CPath(folder), (reply == wxYES));
+			CPartFileConvert::ScanFolderToAdd(CPath(normalized), deleteSources);
 		}
 	}
 }

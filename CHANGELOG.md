@@ -18,6 +18,23 @@ Reemplazar headers GPL largos (~24 líneas) por versión simplificada (~6 línea
 
 ---
 
+## [1.0.1] - 2026-03-27
+
+### Hardening de rutas y config remota (Fase 2)
+- Categorías (GUI + EC/Web) solo aceptan directorios bajo Incoming o raíces compartidas declaradas; migraciones automáticas a Incoming cuando se detectan rutas heredadas inseguras.
+- `SharedFileList`, `DirectoryTreeCtrl` y los conectores EC/Web sanitizan rutas antes de persistirlas (`shareddir.dat` ya no almacena entradas relativas/duplicadas ni carpetas prohibidas).
+- `NormalizeRenameTarget` bloquea renombres con separadores/`..` y `CSharedFileList::RenameFile` evita mover ficheros fuera de las carpetas compartidas.
+- `PartFileConvert` valida el origen, restringe el borrado (`deleteSource`) a Temp/Incoming y evita traversal cuando se importan `.part` o `.sd`.
+- `ED2KLinkParser` y `--config-dir` normalizan rutas, garantizando que `ED2KLinks` se escriban siempre dentro del config dir seguro; las colecciones `.emulecollection` deben ser absolutas válidas.
+- Tests MuleUnit (`PathTraversalTest`) ampliados con `IsSubPathOf` y casos positivos/negativos de normalización.
+
+### Validaciones
+- `cmake --build . --config Debug` generó `wmule.exe` y `wmulecmd.exe` actualizados.
+- `ctest -R PathTraversalTest -C Debug --output-on-failure` cubre los nuevos helpers.
+- Smoke test manual: `wmule.exe` conectó a servidores, ejecutó búsquedas extendidas con filtros, descargó y compartió ficheros usando rutas saneadas.
+
+---
+
 ## [1.0.0] - 2026-03-24
 
 ### Fork wMule

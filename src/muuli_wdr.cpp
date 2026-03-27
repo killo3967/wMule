@@ -825,7 +825,7 @@ wxSizer *commentDlg( wxWindow *parent, bool call_fit, bool set_sizer )
     wxBoxSizer *item3 = new wxBoxSizer( wxHORIZONTAL );
 
     CMuleTextCtrl *item4 = new CMuleTextCtrl( parent, IDC_CMT_TEXT, wxT(""), wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER );
-    item4->SetToolTip( _("For a film you can say its length, its story, language ...\\n\\nand if it's a fake, you can tell that to other users of aMule.") );
+    item4->SetToolTip( _("For a film you can say its length, its story, language ...\\n\\nand if it's a fake, you can tell that to other users of wMule.") );
     item3->Add( item4, 1, wxALIGN_CENTER_VERTICAL|wxALL, 5 );
 
     wxButton *item5 = new wxButton( parent, IDC_FC_CLEAR, _("Clear"), wxDefaultPosition, wxDefaultSize, 0 );
@@ -1446,7 +1446,7 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit, bool set_sizer 
     wxStaticBox *item2 = new wxStaticBox( parent, -1, _("Nick") );
     wxStaticBoxSizer *item1 = new wxStaticBoxSizer( item2, wxVERTICAL );
 
-    CMuleTextCtrl *item3 = new CMuleTextCtrl( parent, IDC_NICK, _("http://www.aMule.org - the multi-platform Mule"), wxDefaultPosition, wxSize(90,-1), 0 );
+    CMuleTextCtrl *item3 = new CMuleTextCtrl( parent, IDC_NICK, _("https://github.com/wMule/wMule - the multi-platform Mule"), wxDefaultPosition, wxSize(90,-1), 0 );
     item3->SetToolTip( _("This is the name that other users will see when connecting to you.") );
     item1->Add( item3, 0, wxGROW|wxALIGN_CENTER_VERTICAL, 5 );
 
@@ -1467,16 +1467,16 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit, bool set_sizer 
     item0->Add( item4, 0, wxGROW|wxALIGN_CENTER_HORIZONTAL, 0 );
 
     wxCheckBox *item7 = new wxCheckBox( parent, IDC_NEWVERSION, _("Check for new version at startup"), wxDefaultPosition, wxDefaultSize, 0 );
-    item7->SetToolTip( _("Enabling this will make aMule check for new version at startup") );
+    item7->SetToolTip( _("Enabling this will make wMule check for new version at startup") );
     item0->Add( item7, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
     wxCheckBox *item8 = new wxCheckBox( parent, IDC_STARTMIN, _("Start minimized"), wxDefaultPosition, wxDefaultSize, 0 );
-    item8->SetToolTip( _("Enabling this makes aMule minimize itself upon start.") );
+    item8->SetToolTip( _("Enabling this makes wMule minimize itself upon start.") );
     item0->Add( item8, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
     wxCheckBox *item9 = new wxCheckBox( parent, IDC_EXIT, _("Prompt on exit"), wxDefaultPosition, wxDefaultSize, 0 );
     item9->SetValue( true );
-    item9->SetToolTip( _("Makes aMule prompt before exiting.") );
+    item9->SetToolTip( _("Makes wMule prompt before exiting.") );
     item0->Add( item9, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
     wxCheckBox *item10 = new wxCheckBox( parent, IDC_MACHIDEONCLOSE, _("Hide application window when close button is pressed"), wxDefaultPosition, wxDefaultSize, 0 );
@@ -1487,11 +1487,11 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit, bool set_sizer 
     item0->Add( item11, 0, wxGROW|wxALIGN_CENTER_VERTICAL, 0 );
 
     wxCheckBox *item12 = new wxCheckBox( parent, IDC_MINTRAY, _("Minimize to Tray Icon"), wxDefaultPosition, wxDefaultSize, 0 );
-    item12->SetToolTip( _("Enabling this will make aMule minimize to the System Tray, rather than the taskbar.") );
+    item12->SetToolTip( _("Enabling this will make wMule minimize to the System Tray, rather than the taskbar.") );
     item0->Add( item12, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
     wxCheckBox *item13 = new wxCheckBox( parent, IDC_NOTIF, _("Show notifications when finished downloading"), wxDefaultPosition, wxDefaultSize, 0 );
-    item13->SetToolTip( _("Enabling this will make aMule to show notifications when finished downloading.") );
+    item13->SetToolTip( _("Enabling this will make wMule show notifications when finished downloading.") );
     item0->Add( item13, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
     wxBoxSizer *item14 = new wxBoxSizer( wxHORIZONTAL );
@@ -1648,7 +1648,7 @@ wxSizer *PreferencesConnectionTab( wxWindow *parent, bool call_fit, bool set_siz
     item25->Add( item26, 0, wxALIGN_CENTER_VERTICAL|wxRIGHT, 5 );
 
     wxTextCtrl *item27 = new wxTextCtrl( parent, IDC_ADDRESS, wxT(""), wxDefaultPosition, wxSize(80,-1), 0 );
-    item27->SetToolTip( _("Advanced users only: If you have multiple network interfaces, enter the address of the interface to which aMule should be bound.") );
+    item27->SetToolTip( _("Advanced users only: If you have multiple network interfaces, enter the address of the interface to which wMule should be bound.") );
     item25->Add( item27, 0, wxGROW|wxALIGN_CENTER_HORIZONTAL, 0 );
 
     item0->Add( item25, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxLEFT|wxRIGHT|wxBOTTOM, 0 );
@@ -1818,7 +1818,7 @@ wxSizer *PreferencesFilesTab( wxWindow *parent, bool call_fit, bool set_sizer )
     item14->AddGrowableCol( 0 );
 
     wxCheckBox *item15 = new wxCheckBox( parent, IDC_CHECKDISKSPACE, _("Stop downloads when free disk space reaches "), wxDefaultPosition, wxDefaultSize, 0 );
-    item15->SetToolTip( _("Select this if you want aMule to check your disk space") );
+    item15->SetToolTip( _("Select this if you want wMule to check your disk space") );
     item14->Add( item15, 0, wxALIGN_CENTER_VERTICAL, 0 );
 
     wxSpinCtrl *item16 = new wxSpinCtrl( parent, IDC_MINDISKSPACE, wxT("1"), wxDefaultPosition, wxSize(100,-1), 0, 1, 1000000, 1 );
@@ -2019,7 +2019,7 @@ wxSizer *PreferencesStatisticsTab( wxWindow *parent, bool call_fit, bool set_siz
     return item0;
 }
 
-wxSizer *PreferencesaMuleTweaksTab( wxWindow *parent, bool call_fit, bool set_sizer )
+wxSizer *PreferencesWmuleTweaksTab( wxWindow *parent, bool call_fit, bool set_sizer )
 {
     wxFlexGridSizer *item0 = new wxFlexGridSizer( 1, 0, 0 );
     item0->AddGrowableCol( 0 );
@@ -2156,7 +2156,7 @@ wxSizer *PreferencesGuiTweaksTab( wxWindow *parent, bool call_fit, bool set_size
 
     wxCheckBox *item21 = new wxCheckBox( parent, IDC_AUTOSORT, _("Auto-sort files (high CPU)"), wxDefaultPosition, wxDefaultSize, 0 );
     item21->SetValue( true );
-    item21->SetToolTip( _("aMule will sort the columns in your download list automatically") );
+    item21->SetToolTip( _("wMule will sort the columns in your download list automatically") );
     item13->Add( item21, 0, wxGROW|wxALIGN_CENTER_VERTICAL, 0 );
 
     item0->Add( item13, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxALL, 0 );
@@ -2495,7 +2495,7 @@ wxSizer *ServerInfoLog( wxWindow *parent, bool call_fit, bool set_sizer )
     return item0;
 }
 
-wxSizer *aMuleLog( wxWindow *parent, bool call_fit, bool set_sizer )
+wxSizer *wMuleLog( wxWindow *parent, bool call_fit, bool set_sizer )
 {
     wxBoxSizer *item0 = new wxBoxSizer( wxVERTICAL );
 
@@ -2598,8 +2598,8 @@ wxSizer *serverListDlgDown( wxWindow *parent, bool call_fit, bool set_sizer )
     wxWindow *item2 = item3;
 
     wxPanel *item4 = new wxPanel( item3, -1 );
-    aMuleLog( item4, false );
-    item3->AddPage( item4, _("aMule Log") );
+    wMuleLog( item4, false );
+    item3->AddPage( item4, _("wMule Log") );
 
     wxPanel *item5 = new wxPanel( item3, -1 );
     ServerInfoLog( item5, false );
@@ -2811,16 +2811,16 @@ wxSizer *PreferencesSecurityTab( wxWindow *parent, bool call_fit, bool set_sizer
 
     wxCheckBox *item4 = new wxCheckBox( parent, IDC_SUPPORT_PO, _("Support Protocol Obfuscation"), wxDefaultPosition, wxDefaultSize, 0 );
     item4->SetValue( true );
-    item4->SetToolTip( _("This option enabled Protocol Obfuscation, and makes aMule accept obfuscated connections from other clients.") );
+    item4->SetToolTip( _("This option enables Protocol Obfuscation and makes wMule accept obfuscated connections from other clients.") );
     item2->Add( item4, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxLEFT, 5 );
 
     wxCheckBox *item5 = new wxCheckBox( parent, IDC_ENABLE_PO_OUTGOING, _("Use obfuscation for outgoing connections"), wxDefaultPosition, wxDefaultSize, 0 );
     item5->SetValue( true );
-    item5->SetToolTip( _("This option makes aMule use Protocol Obfuscation when connecting other clients/servers.") );
+    item5->SetToolTip( _("This option makes wMule use Protocol Obfuscation when connecting other clients/servers.") );
     item2->Add( item5, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxLEFT, 25 );
 
     wxCheckBox *item6 = new wxCheckBox( parent, IDC_ENFORCE_PO_INCOMING, _("Accept only obfuscated connections"), wxDefaultPosition, wxDefaultSize, 0 );
-    item6->SetToolTip( _("This option makes aMule only accept obfuscated connections. You will have less sources, but all your traffic will be obfuscated") );
+    item6->SetToolTip( _("This option makes wMule only accept obfuscated connections. You will have less sources, but all your traffic will be obfuscated") );
     item2->Add( item6, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxLEFT, 25 );
 
     item0->Add( item2, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxLEFT|wxRIGHT|wxTOP, 0 );
@@ -2844,12 +2844,12 @@ wxSizer *PreferencesSecurityTab( wxWindow *parent, bool call_fit, bool set_sizer
 
     wxCheckBox *item12 = new wxCheckBox( parent, IDC_IPFCLIENTS, _("Filter clients"), wxDefaultPosition, wxDefaultSize, 0 );
     item12->SetValue( true );
-    item12->SetToolTip( _("Enable filtering of the client IPs defined in the file ~/.aMule/ipfilter.dat.") );
+    item12->SetToolTip( _("Enable filtering of the client IPs defined in the file ~/.wMule/ipfilter.dat." ) );
     item11->Add( item12, 0, wxGROW|wxALL, 0 );
 
     wxCheckBox *item13 = new wxCheckBox( parent, IDC_IPFSERVERS, _("Filter servers"), wxDefaultPosition, wxDefaultSize, 0 );
     item13->SetValue( true );
-    item13->SetToolTip( _("Enable filtering of the server IPs defined in the file ~/.aMule/ipfilter.dat.") );
+    item13->SetToolTip( _("Enable filtering of the server IPs defined in the file ~/.wMule/ipfilter.dat." ) );
     item11->Add( item13, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxALL, 0 );
 
     item10->Add( item11, 0, wxALIGN_CENTER|wxALL, 0 );
@@ -2857,7 +2857,7 @@ wxSizer *PreferencesSecurityTab( wxWindow *parent, bool call_fit, bool set_sizer
     item10->Add( 10, 10, 1, wxGROW|wxALIGN_CENTER_HORIZONTAL, 0 );
 
     wxButton *item14 = new wxButton( parent, IDC_IPFRELOAD, _("Reload List"), wxDefaultPosition, wxDefaultSize, 0 );
-    item14->SetToolTip( _("Reload the list of IPs to filter from the file ~/.aMule/ipfilter.dat") );
+    item14->SetToolTip( _("Reload the list of IPs to filter from the file ~/.wMule/ipfilter.dat") );
     item10->Add( item14, 0, wxALIGN_CENTER|wxRIGHT|wxTOP|wxBOTTOM, 5 );
 
     item8->Add( item10, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxLEFT, 5 );

@@ -48,6 +48,7 @@
 
 #include <ec/cpp/ECFileConfig.h>	// Needed for CECFileConfig
 #include <common/MD5Sum.h>
+#include <common/SecretHash.h>
 #include "OtherFunctions.h"		// Needed for GetPassword()
 #include "MuleVersion.h"		// Needed for GetMuleVersion()
 
@@ -476,10 +477,10 @@ void CaMuleExternalConnector::OnInitCmdLine(wxCmdLineParser& parser, const char*
 		_("Show this help text."),
 		wxCMD_LINE_PARAM_OPTIONAL);
 	parser.AddOption(wxT("h"), wxT("host"),
-		_("Host where aMule is running. (default: localhost)"),
+		_("Host where wMule is running. (default: localhost)"),
 		wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
 	parser.AddOption(wxT("p"), wxT("port"),
-		_("aMule's port for External Connection. (default: 4712)"),
+		_("wMule's port for External Connection. (default: 4712)"),
 		wxCMD_LINE_VAL_NUMBER, wxCMD_LINE_PARAM_OPTIONAL);
 	parser.AddOption(wxT("P"), wxT("password"),
 		_("External Connection password."),
@@ -500,7 +501,7 @@ void CaMuleExternalConnector::OnInitCmdLine(wxCmdLineParser& parser, const char*
 		_("Write command line options to config file."),
 		wxCMD_LINE_PARAM_OPTIONAL);
 	parser.AddOption(wxEmptyString, wxT("create-config-from"),
-		_("Creates config file based on aMule's config file."),
+		_("Creates config file based on wMule's config file."),
 		wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
 	parser.AddSwitch(wxEmptyString, wxT("version"),
 		_("Print program version."),
@@ -577,7 +578,17 @@ void CaMuleExternalConnector::LoadAmuleConfig(CECFileConfig& cfg)
 {
 	m_host = wxT("localhost");
 	m_port = cfg.Read(wxT("/ExternalConnect/ECPort"), 4712l);
-	cfg.ReadHash(wxT("/ExternalConnect/ECPassword"), &m_password);
+	wxString stored = cfg.Read(wxT("/ExternalConnect/ECPassword"), wxEmptyString);
+	if (stored.IsEmpty()) {
+		cfg.ReadHash(wxT("/ExternalConnect/ECPassword"), &m_password);
+	} else if (SecretHash::IsPBKDF2Secret(stored)) {
+		m_password.Clear();
+		Show(_("Warning: The EC password uses PBKDF2 and cannot be copied automatically. Please specify --password."));
+	} else if (!m_password.Decode(stored)) {
+		m_password.Clear();
+	} else {
+		// decoded successfully
+	}
 	m_language = cfg.Read(wxT("/eMule/Language"), wxEmptyString);
 }
 
@@ -673,12 +684,10 @@ void CaMuleExternalConnector::OnFatalException()
 	/* Print the backtrace */
 	fprintf(stderr, "\n--------------------------------------------------------------------------------\n");
 	fprintf(stderr, "A fatal error has occurred and %s has crashed.\n", m_appname);
-	fprintf(stderr, "Please assist us in fixing this problem by posting the backtrace below in our\n");
-	fprintf(stderr, "'aMule Crashes' forum and include as much information as possible regarding the\n");
-	fprintf(stderr, "circumstances of this crash. The forum is located here:\n");
-	fprintf(stderr, "    http://forum.amule.org/index.php?board=67.0\n");
-	fprintf(stderr, "If possible, please try to generate a real backtrace of this crash:\n");
-	fprintf(stderr, "    http://wiki.amule.org/wiki/Backtraces\n\n");
+	fprintf(stderr, "Please help us fix this problem by filing an issue on the wMule tracker:\n");
+	fprintf(stderr, "    https://github.com/wMule/wMule/issues\n");
+	fprintf(stderr, "Include as much information as possible regarding the\n");
+	fprintf(stderr, "circumstances of this crash and attach the backtrace below.\n\n");
 	fprintf(stderr, "----------------------------=| BACKTRACE FOLLOWS: |=----------------------------\n");
 	fprintf(stderr, "Current version is: %s %s\n", m_appname, m_strFullVersion);
 	fprintf(stderr, "Running on: %s\n\n", m_strOSDescription);

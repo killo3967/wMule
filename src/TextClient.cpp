@@ -120,7 +120,7 @@ IMPLEMENT_APP_CONSOLE (CamulecmdApp)
 
 void CamulecmdApp::OnInitCmdLine(wxCmdLineParser& parser)
 {
-	CwMuleExternalConnector::OnInitCmdLine(parser, "amulecmd");
+    CaMuleExternalConnector::OnInitCmdLine(parser, "amulecmd");
 	parser.AddOption(wxT("c"), wxT("command"),
 		_("Execute <str> and exit."),
 		wxCMD_LINE_VAL_STRING, wxCMD_LINE_PARAM_OPTIONAL);
@@ -893,8 +893,8 @@ void CamulecmdApp::OnInitCommandSet()
 	m_commands.AddCommand(wxT("Statistics"), CMD_ID_STATTREE, wxTRANSLATE("Show full statistics tree."),
 			      wxTRANSLATE("Optionally, a number in the range 0-255 can be passed as an argument to this\ncommand, which tells how many entries of the client version subtrees should be\nshown. Passing 0 or omitting it means 'unlimited'.\n\nExample: 'statistics 5' will show only the top 5 versions for each client type.\n"));
 
-	m_commands.AddCommand(wxT("Shutdown"), CMD_ID_SHUTDOWN, wxTRANSLATE("Shut down aMule."),
-			      wxTRANSLATE("Shut down the remote running core (amule/amuled).\nThis will also shut down the text client, since it is unusable without a\nrunning core.\n"), CMD_PARAM_NEVER);
+	m_commands.AddCommand(wxT("Shutdown"), CMD_ID_SHUTDOWN, wxTRANSLATE("Shut down wMule."),
+		      wxTRANSLATE("Shut down the remote running core (wmule/wmuled).\nThis will also shut down the text client, since it is unusable without a\nrunning core.\n"), CMD_PARAM_NEVER);
 
 	tmp = m_commands.AddCommand(wxT("Reload"), CMD_ERR_INCOMPLETE, wxTRANSLATE("Reload the given object."), wxEmptyString, CMD_PARAM_NEVER);
 	tmp->AddCommand(wxT("Shared"), CMD_ID_RELOAD_SHARED, wxTRANSLATE("Reload shared files list."), wxEmptyString, CMD_PARAM_NEVER);
@@ -1017,7 +1017,7 @@ void CamulecmdApp::OnInitCommandSet()
 
 int CamulecmdApp::OnRun()
 {
-	ConnectAndRun(wxT("aMulecmd"), wxT(VERSION));
+	ConnectAndRun(wxT("wMulecmd"), wxT(VERSION));
 	return 0;
 }
 

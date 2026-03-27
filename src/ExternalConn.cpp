@@ -29,9 +29,11 @@
 #include <ec/cpp/ECMuleSocket.h>		// Needed for CECSocket
 
 #include <common/Format.h>			// Needed for CFormat
+#include <common/Path.h>
 
 #include <common/ClientVersion.h>
 #include <common/MD5Sum.h>
+#include <common/SecretHash.h>
 
 #include "ExternalConn.h"			// Interface declarations
 #include "updownclient.h"			// Needed for CUpDownClient
@@ -465,6 +467,11 @@ const CECPacket *CECServerSocket::Authenticate(const CECPacket *request)
 			if (proto_version == EC_CURRENT_PROTOCOL_VERSION) {
 				response = new CECPacket(EC_OP_AUTH_SALT);
 				response->AddTag(CECTag(EC_TAG_PASSWD_SALT, m_passwd_salt));
+				SecretHash::PBKDF2Info info;
+				if (SecretHash::ExtractPBKDF2Info(thePrefs::ECPassword(), info)) {
+					wxString params = CFormat(wxT("%u:%s")) % info.iterations % info.saltHex;
+					response->AddTag(CECTag(EC_TAG_PBKDF2_PARAMS, params));
+				}
 				m_conn_state = CONN_SALT_SENT;
 				//
 				// So far ok, check capabilities of client
@@ -493,19 +500,27 @@ const CECPacket *CECServerSocket::Authenticate(const CECPacket *request)
 		const CECTag *passwd = request->GetTagByName(EC_TAG_PASSWD_HASH);
 		CMD4Hash passh;
 
-		if (!passh.Decode(thePrefs::ECPassword())) {
+		wxString storedSecret = thePrefs::ECPassword();
+		wxString storedDigest;
+		SecretHash::PBKDF2Info info;
+		if (SecretHash::ExtractPBKDF2Info(storedSecret, info)) {
+			storedDigest = info.digestHex;
+		} else if (SecretHash::IsLegacyMD5(storedSecret)) {
+			storedDigest = storedSecret;
+		} else {
 			wxString err = wxTRANSLATE("Authentication failed: invalid hash specified as EC password.");
-			AddLogLineN(wxString(wxGetTranslation(err))
-						+ wxT(" ") + thePrefs::ECPassword());
+			AddLogLineN(wxGetTranslation(err));
 			response = new CECPacket(EC_OP_AUTH_FAIL);
 			response->AddTag(CECTag(EC_TAG_STRING, err));
-		} else {
+			storedDigest.clear();
+		}
+
+		if (!storedDigest.IsEmpty()) {
 			wxString saltHash = MD5Sum(CFormat(wxT("%lX")) % m_passwd_salt).GetHash();
-			wxString saltStr = CFormat(wxT("%lX")) % m_passwd_salt;
+			CMD4Hash expected;
+			expected.Decode(MD5Sum(storedDigest.Lower() + saltHash).GetHash());
 
-			passh.Decode(MD5Sum(thePrefs::ECPassword().Lower() + saltHash).GetHash());
-
-			if (passwd && passwd->GetMD4Data() == passh) {
+			if (passwd && passwd->GetMD4Data() == expected) {
 				response = new CECPacket(EC_OP_AUTH_OK);
 				response->AddTag(CECTag(EC_TAG_SERVER_VERSION, wxT(VERSION)));
 			} else {
@@ -1454,13 +1469,16 @@ CECPacket *CECServerSocket::ProcessRequest2(const CECPacket *request)
 				response->AddTag(CECTag(EC_TAG_STRING, wxTRANSLATE("File not found.")));
 				break;
 			}
-			if (newName.IsEmpty()) {
+
+			CPath sanitizedName;
+			if (!NormalizeRenameTarget(newName, sanitizedName)) {
+				AddLogLineCS(_("Denied remote rename because the target name is invalid."));
 				response = new CECPacket(EC_OP_FAILED);
 				response->AddTag(CECTag(EC_TAG_STRING, wxTRANSLATE("Invalid file name.")));
 				break;
 			}
 
-			if (theApp->sharedfiles->RenameFile(file, CPath(newName))) {
+			if (theApp->sharedfiles->RenameFile(file, sanitizedName)) {
 				response = new CECPacket(EC_OP_NOOP);
 			} else {
 				response = new CECPacket(EC_OP_FAILED);

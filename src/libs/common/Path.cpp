@@ -750,3 +750,155 @@ CPath SanitizeFileName(const wxString& rawName)
 	}
 	return CPath(filtered);
 }
+
+bool NormalizeRenameTarget(const wxString& rawName, CPath& sanitizedName)
+{
+	if (rawName.IsEmpty()) {
+		return false;
+	}
+
+	wxFileName candidate(rawName);
+	if (candidate.IsAbsolute() || candidate.HasVolume() || (candidate.GetDirCount() > 0)) {
+		return false;
+	}
+
+	if (rawName == wxT(".")) {
+		return false;
+	}
+
+	if (rawName.Find(wxT("..")) != wxNOT_FOUND) {
+		return false;
+	}
+
+	if ((rawName.Find(wxT('/')) != wxNOT_FOUND) || (rawName.Find(wxT('\\')) != wxNOT_FOUND)) {
+		return false;
+	}
+
+	CPath sanitized = SanitizeFileName(rawName);
+	if (!sanitized.IsOk() || sanitized.GetPrintable().IsEmpty()) {
+		return false;
+	}
+
+	sanitizedName = sanitized;
+	return true;
+}
+bool NormalizeAbsolutePath(const wxString& rawPath, wxString& normalizedPath)
+{
+	if (rawPath.IsEmpty()) {
+		return false;
+	}
+
+	wxFileName fn(rawPath);
+	const int flags = wxPATH_NORM_DOTS | wxPATH_NORM_TILDE | wxPATH_NORM_ABSOLUTE;
+	if (!fn.Normalize(flags, wxGetCwd())) {
+		return false;
+	}
+	wxString normalized = fn.GetFullPath();
+	if (normalized.IsEmpty()) {
+		return false;
+	}
+	normalizedPath = normalized;
+	return true;
+}
+
+static bool ContainsTraversal(const wxFileName& fn)
+{
+	wxArrayString dirs = fn.GetDirs();
+	for (size_t idx = 0; idx < dirs.GetCount(); ++idx) {
+		if (dirs[idx] == wxT("..")) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool NormalizeAbsolutePathNoTraversal(const wxString& rawPath, wxString& normalizedPath)
+{
+	if (rawPath.IsEmpty()) {
+		return false;
+	}
+
+	wxFileName fn(rawPath);
+	if (fn.IsRelative() || ContainsTraversal(fn)) {
+		return false;
+	}
+
+	return NormalizeAbsolutePath(rawPath, normalizedPath);
+}
+
+bool NormalizeAbsoluteDirNoTraversal(const wxString& rawPath, wxString& normalizedPath, bool createIfMissing)
+{
+	wxString normalized;
+	if (!NormalizeAbsolutePathNoTraversal(rawPath, normalized)) {
+		return false;
+	}
+
+	CPath dirPath(normalized);
+	if (dirPath.FileExists()) {
+		return false;
+	}
+
+	if (!dirPath.DirExists()) {
+		if (!createIfMissing) {
+			return false;
+		}
+
+		if (!CPath::MakeDir(dirPath)) {
+			return false;
+		}
+	}
+
+	normalizedPath = normalized;
+	return true;
+}
+
+bool NormalizeAbsoluteFilePathNoTraversal(const wxString& rawPath, wxString& normalizedPath)
+{
+	if (!NormalizeAbsolutePathNoTraversal(rawPath, normalizedPath)) {
+		return false;
+	}
+
+	wxFileName fn(normalizedPath);
+	return !fn.GetFullName().IsEmpty();
+}
+
+bool NormalizeSharedPath(const wxString& rawPath, wxString& normalizedPath, const wxString& baseDir)
+{
+	if (rawPath.IsEmpty()) {
+		return false;
+	}
+
+	const int flags = (wxPATH_NORM_ALL | wxPATH_NORM_DOTS | wxPATH_NORM_TILDE | wxPATH_NORM_ABSOLUTE) & ~wxPATH_NORM_ENV_VARS;
+	wxFileName fn(rawPath);
+	if (fn.IsRelative() && baseDir.IsEmpty()) {
+		return false;
+	}
+	if (!fn.Normalize(flags, baseDir)) {
+		return false;
+	}
+	if (!fn.IsAbsolute()) {
+		return false;
+	}
+	normalizedPath = fn.GetFullPath();
+	return true;
+}
+
+bool NormalizeCategoryPath(const wxString& rawPath, wxString& normalizedPath)
+{
+	return NormalizeSharedPath(rawPath, normalizedPath);
+}
+
+
+bool IsSubPathOf(const CPath& parent, const CPath& child)
+{
+	if (!parent.IsOk() || !child.IsOk()) {
+		return false;
+	}
+
+	if (child.IsSameDir(parent)) {
+		return true;
+	}
+
+	return child.StartsWith(parent);
+}

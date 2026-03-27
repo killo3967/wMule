@@ -39,6 +39,7 @@
 #include <ec/cpp/ECFileConfig.h>	// Needed for CECFileConfig
 #include <ec/cpp/ECSpecialTags.h>
 #include <common/MD5Sum.h>
+#include <common/SecretHash.h>
 #include <common/Format.h>		// Needed for CFormat
 
 #include <protocol/ed2k/Constants.h>	// Needed for PARTSIZE
@@ -276,7 +277,7 @@ void CWebServerBase::StartServer()
 			webInterface->m_WebserverPort,
 			"TCP",
 			true,
-			"aMule TCP Webserver Socket");
+			"wMule TCP Webserver Socket");
 		m_upnp = new CUPnPControlPoint(m_upnpTCPPort);
 		m_upnp->AddPortMappings(m_upnpMappings);
 	}
@@ -1876,15 +1877,11 @@ void CScriptWebServer::ProcessURL(ThreadData Data)
 			Print(_("Checking password\n"));
 			session->m_loggedin = false;
 
-			CMD4Hash PwHash;
-			if (!PwHash.Decode(MD5Sum(PwStr).GetHash())) {
-				Print(_("Password hash invalid\n"));
-				session->m_vars["login_error"] = "Invalid password hash, please report on http://forum.amule.org";
-			} else if ( PwHash == webInterface->m_AdminPass ) {
+			if (VerifyWebPassword(webInterface->m_AdminPass, PwStr)) {
 				session->m_loggedin = true;
 				// m_vars is map<string, string> - so _() will not work here !
 				session->m_vars["guest_login"] = "0";
-			} else if ( PwHash == webInterface->m_GuestPass ) {
+			} else if (VerifyWebPassword(webInterface->m_GuestPass, PwStr)) {
 				session->m_loggedin = true;
 				session->m_vars["guest_login"] = "1";
 			} else {
@@ -1941,7 +1938,7 @@ void CScriptWebServer::ProcessURL(ThreadData Data)
 		session->m_vars["content_type"] = "application/json";
 		httpOut = ProcessHtmlRequest(unicode2char(req_file), httpOutLen);
 	} else {
-		httpOut = GetErrorPage("aMuleweb doesn't handle the requested file type ", httpOutLen);
+		httpOut = GetErrorPage("wMule Web doesn't handle the requested file type ", httpOutLen);
 	}
 
 	bool isUseGzip = webInterface->m_UseGzip;
@@ -1988,19 +1985,19 @@ void CNoTemplateWebServer::ProcessURL(ThreadData Data)
 	const char *httpOut = ""
 	"<html>"
 		"<head>"
-			"<title>aMuleWeb error page</title>"
+			"<title>wMule Web error page</title>"
 			"<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\">"
 		"</head>"
 		"<body>"
-			"<p>You are seeing this page instead of aMuleWeb login page because a valid template has not been found.</p>"
-			"<p>This probably means that there's a problem with your aMule installation </p>"
+			"<p>You are seeing this page instead of the wMule Web login because no valid template has been found.</p>"
+			"<p>This usually means the wMule installation is incomplete.</p>"
 			"<ul>"
-				"<li>Before installing new versions, please ensure that you uninstalled older versions of aMule.</li>"
-				"<li>If you are installing by compiling from source, check configuration and run &quot;make&quot; and &quot;make install&quot; again </li>"
-				"<li>If you are installing by using a precompiled package, you may need to contact the package maintainer </li>"
+				"<li>Before installing new versions, please ensure that you removed older versions of wMule.</li>"
+				"<li>If you built from source, rerun configure, make, and make install.</li>"
+				"<li>If you used a precompiled package, please contact the package maintainer.</li>"
 			"</ul>"
-			"<p>For more information please visit</p>"
-			"<p><a href=\"http://www.amule.org\">wMule main site</a> or <a href=\"http://forum.amule.org\">wMule forums</a></p>"
+			"<p>For more information please visit the project page:</p>"
+			"<p><a href=\"https://github.com/wMule/wMule\">https://github.com/wMule/wMule</a></p>"
 		"</body>"
 	"</html>";
 
@@ -2011,3 +2008,22 @@ void CNoTemplateWebServer::ProcessURL(ThreadData Data)
 }
 
 // File_checked_for_headers
+#ifdef __WXDEBUG__
+#endif
+
+static bool VerifyWebPassword(const wxString& storedSecret, const wxString& plainText)
+{
+	if (storedSecret.IsEmpty()) {
+		return false;
+	}
+	wxString md5 = MD5Sum(plainText).GetHash();
+	SecretHash::PBKDF2Info info;
+	if (SecretHash::ExtractPBKDF2Info(storedSecret, info)) {
+		wxString derived;
+		if (!SecretHash::DeriveDigestFromMD5(md5, info.iterations, info.saltHex, derived)) {
+			return false;
+		}
+		return derived.CmpNoCase(info.digestHex) == 0;
+	}
+	return md5.CmpNoCase(storedSecret) == 0;
+}

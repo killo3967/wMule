@@ -250,7 +250,7 @@ void CWebSocket::SendHttpHeaders(const char* szType, bool use_gzip, uint32 conte
 		cookie[0] = 0;
 	}
 
-	snprintf(szBuf, sizeof(szBuf), "HTTP/1.1 200 OK\r\nServer: aMule\r\nPragma: no-cache\r\nExpires: 0\r\n"
+	snprintf(szBuf, sizeof(szBuf), "HTTP/1.1 200 OK\r\nServer: wMule\r\nPragma: no-cache\r\nExpires: 0\r\n"
 		"Cache-Control: no-cache, no-store, must-revalidate\r\n"
 		"%s"
 		"Connection: close\r\nContent-Type: %s\r\n"

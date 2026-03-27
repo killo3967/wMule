@@ -31,6 +31,7 @@ const int versionRevision	= 1;
 #include <sstream>
 #include <iostream>
 #include <fstream>
+#include <memory>
 
 // macOS support disabled - Windows x64 only build
 //#ifdef __APPLE__
@@ -45,63 +46,36 @@ const int versionRevision	= 1;
 #include "FileLock.h"
 #include "MagnetURI.h"
 #include "MuleCollection.h"
+#include <common/Path.h>
+#include <wx/filename.h>
 
 using std::string;
 
-static string GetLinksFilePath(const string& configDir)
+static string ToFileSystemPath(const wxString& path)
 {
-	if (!configDir.empty()) {
+	const wxWX2MBbuf buf = path.mb_str(wxConvFile);
+	return string(buf.data(), buf.length());
+}
+
+static wxString FromFileSystemPath(const string& path)
+{
+	return wxString(path.c_str(), wxConvFile);
+}
+
+static wxString GetDefaultConfigDir()
+{
 #ifdef _WIN32
-		char buffer[MAX_PATH + 1];
-		configDir.copy(buffer, MAX_PATH);
-		if (PathAppendA(buffer, "ED2KLinks")) {
-			string strDir;
-			strDir.assign(buffer);
-			return strDir;
-		}
-#else
-		string strDir = configDir;
-		if (strDir.at(strDir.length() - 1) != '/') {
-			strDir += '/';
-		}
-		return strDir + "ED2KLinks";
-#endif
-	}
-
-
-// macOS support disabled - Windows x64 only build
-//#ifdef __APPLE__
-//
-//	std::string strDir;
-//
-//	FSRef fsRef;
-//	if (FSFindFolder(kUserDomain, kApplicationSupportFolderType, kCreateFolder, &fsRef) == noErr) {
-//		CFURLRef urlRef = CFURLCreateFromFSRef(nullptr, &fsRef);
-//		if (urlRef != nullptr) {
-//			UInt8 buffer[PATH_MAX + 1];
-//			if (CFURLGetFileSystemRepresentation(urlRef, true, buffer, sizeof(buffer))) {
-//				strDir.assign((char*) buffer);
-//			}
-//			CFRelease(urlRef) ;
-//		}
-//	}
-//
-//	return strDir + "/aMule/ED2KLinks";
-//
-//#elif defined(_WIN32)
-#elif defined(_WIN32)
-
-	std::string strDir;
-	LPITEMIDLIST pidl;
+	wxString strDir;
+	LPITEMIDLIST pidl = nullptr;
 
 	HRESULT hr = SHGetSpecialFolderLocation(nullptr, CSIDL_APPDATA, &pidl);
 
 	if (SUCCEEDED(hr)) {
-		char buffer[MAX_PATH + 1];
-		if (SHGetPathFromIDListA(pidl, buffer)) {
-			if (PathAppendA(buffer, "aMule\\ED2KLinks")) {
-				strDir.assign(buffer);
-			}
+		wchar_t buffer[MAX_PATH + 1];
+		if (SHGetPathFromIDListW(pidl, buffer)) {
+			wxFileName base(buffer, wxEmptyString);
+			base.AppendDir(wxT("wMule"));
+			strDir = base.GetPath();
 		}
 	}
 
@@ -115,12 +89,67 @@ static string GetLinksFilePath(const string& configDir)
 	}
 
 	return strDir;
-
 #else
-
-	return string( getenv("HOME") ) + "/.aMule/ED2KLinks";
-
+	wxFileName base(wxString::FromUTF8(getenv("HOME")), wxEmptyString);
+	base.AppendDir(wxT(".wMule"));
+	return base.GetPath();
 #endif
+}
+
+static void LogInvalidConfigDir(const wxString& configDir)
+{
+	std::cerr << "Invalid configuration directory (must be absolute, without traversal, and writable): "
+		<< ToFileSystemPath(configDir) << std::endl;
+}
+
+static bool EnsureConfigDir(const string& rawConfigDir, wxString& normalizedConfigDir)
+{
+	wxString desiredDir;
+	if (rawConfigDir.empty()) {
+		desiredDir = GetDefaultConfigDir();
+	} else {
+		desiredDir = FromFileSystemPath(rawConfigDir);
+	}
+
+	if (desiredDir.IsEmpty()) {
+		std::cerr << "Failed to resolve configuration directory." << std::endl;
+		return false;
+	}
+
+	if (!NormalizeAbsoluteDirNoTraversal(desiredDir, normalizedConfigDir, true)) {
+		LogInvalidConfigDir(desiredDir);
+		return false;
+	}
+
+	return true;
+}
+
+static bool GetLinksFilePath(const string& configDir, string& linksPath)
+{
+	static string cachedInput;
+	static string cachedLinksPath;
+
+	if (!cachedLinksPath.empty() && (cachedInput == configDir)) {
+		linksPath = cachedLinksPath;
+		return true;
+	}
+
+	wxString normalizedConfigDir;
+	if (!EnsureConfigDir(configDir, normalizedConfigDir)) {
+		return false;
+	}
+
+	wxFileName linksFile(normalizedConfigDir, wxT("ED2KLinks"));
+	wxString normalizedLinksPath;
+	if (!NormalizeAbsolutePathNoTraversal(linksFile.GetFullPath(), normalizedLinksPath)) {
+		std::cerr << "Failed to build a safe ED2KLinks path under the configuration directory." << std::endl;
+		return false;
+	}
+
+	cachedInput = configDir;
+	cachedLinksPath = ToFileSystemPath(normalizedLinksPath);
+	linksPath = cachedLinksPath;
+	return true;
 }
 
 /**
@@ -246,7 +275,7 @@ static string getVersion()
 {
 	std::ostringstream v;
 
-	v << "aMule ED2k link parser v"
+	v << "wMule ED2k link parser v"
 		<< versionMajor << "."
 		<< versionMinor << "."
 		<< versionRevision;
@@ -270,25 +299,38 @@ static void badLink( const string& type, const string& err, const string& uri )
  *
  * If errors are detected, it will terminate the program.
  */
-static void writeLink( const string& uri, const string& config_dir )
+static bool writeLink( const string& uri, const string& config_dir )
 {
-	// Attempt to lock the ED2KLinks file
-	static CFileLock lock(GetLinksFilePath(config_dir));
+	static std::unique_ptr<CFileLock> lock;
 	static std::ofstream file;
+	static string lockedPath;
+
+	string linksPath;
+	if (!GetLinksFilePath(config_dir, linksPath)) {
+		return false;
+	}
+
+	if (lockedPath.empty()) {
+		lockedPath = linksPath;
+		lock.reset(new CFileLock(lockedPath));
+	} else if (lockedPath != linksPath) {
+		std::cerr << "Configuration directory changed during execution; refusing to write links." << std::endl;
+		return false;
+	}
 
 	if (!file.is_open()) {
-		string path = GetLinksFilePath(config_dir);
-		file.open( path.c_str(), std::ofstream::out | std::ofstream::app );
+		file.open( lockedPath.c_str(), std::ofstream::out | std::ofstream::app );
 
 		if (!file.is_open()) {
-			std::cout << "ERROR! Failed to open " << path << " for writing!" << std::endl;
-			exit(1);
+			std::cout << "ERROR! Failed to open " << lockedPath << " for writing!" << std::endl;
+			return false;
 		}
 	}
 
 	file << uri << std::endl;
 
 	std::cout << "Link successfully queued." << std::endl;
+	return true;
 }
 
 
@@ -450,38 +492,65 @@ int main(int argc, char *argv[])
 
 			if ( (type == "file") && checkFileLink( arg ) ) {
 				arg += category;
-				writeLink( arg, config_path );
+				if (!writeLink( arg, config_path )) {
+					errors = true;
+					break;
+				}
 			} else if ( (type == "server") && checkServerLink( arg ) ) {
-				writeLink( arg, config_path );
+				if (!writeLink( arg, config_path )) {
+					errors = true;
+					break;
+				}
 			} else if ( (type == "serverlist") && checkServerListLink( arg ) ) {
-				writeLink( arg, config_path );
+				if (!writeLink( arg, config_path )) {
+					errors = true;
+					break;
+				}
 			} else {
 				std::cout << "Unknown or invalid link-type:\n\t" << arg << std::endl;
 				errors = true;
 			}
-		} else if (arg == "-c" || arg == "--config-dir") {
-			if (i < argc - 1) {
-				config_path = argv[++i];
-			} else {
-				std::cerr << "Missing mandatory argument for " << arg << std::endl;
+	} else if (arg == "-c" || arg == "--config-dir") {
+		if (i < argc - 1) {
+			wxString normalizedConfigDir;
+			if (!NormalizeAbsoluteDirNoTraversal(wxString(argv[++i], wxConvFile), normalizedConfigDir, true)) {
+				LogInvalidConfigDir(wxString(argv[i], wxConvFile));
 				errors = true;
+				break;
 			}
+			config_path = ToFileSystemPath(normalizedConfigDir);
+		} else {
+			std::cerr << "Missing mandatory argument for " << arg << std::endl;
+			errors = true;
+		}
 		} else if (arg.substr(0, 2) == "-c") {
-			config_path = arg.substr(2);
+		wxString normalizedConfigDir;
+		if (!NormalizeAbsoluteDirNoTraversal(wxString(arg.substr(2).c_str(), wxConvFile), normalizedConfigDir, true)) {
+			LogInvalidConfigDir(wxString(arg.substr(2).c_str(), wxConvFile));
+			errors = true;
+			break;
+		}
+		config_path = ToFileSystemPath(normalizedConfigDir);
 		} else if (arg.substr(0, 13) == "--config-dir=") {
-			config_path = arg.substr(13);
+		wxString normalizedConfigDir;
+		if (!NormalizeAbsoluteDirNoTraversal(wxString(arg.substr(13).c_str(), wxConvFile), normalizedConfigDir, true)) {
+			LogInvalidConfigDir(wxString(arg.substr(13).c_str(), wxConvFile));
+			errors = true;
+			break;
+		}
+		config_path = ToFileSystemPath(normalizedConfigDir);
 		} else if (arg == "-h" || arg == "--help") {
 			std::cout << getVersion()
 				<< "\n\n"
 				<< "Usage:\n"
 				<< "    --help, -h              Prints this help.\n"
-				<< "    --config-dir, -c        Specifies the aMule configuration directory.\n"
+			<< "    --config-dir, -c        Specifies the wMule configuration directory.\n"
 				<< "    --version, -v           Displays version info.\n\n"
 				<< "    --category, -t          Add Link to category number.\n"
 				<< "    magnet:?                Causes the file to be queued for download.\n"
 				<< "    ed2k://|file|           Causes the file to be queued for download.\n"
 				<< "    ed2k://|server|         Causes the server to be listed or updated.\n"
-				<< "    ed2k://|serverlist|     Causes aMule to update the current serverlist.\n\n"
+			<< "    ed2k://|serverlist|     Causes wMule to update the current serverlist.\n\n"
 				<< "    --list, -l              Show all links of an emulecollection\n"
 				<< "    --emulecollection, -e   Loads all links of an emulecollection\n\n"
 				<< "*** NOTE: Option order is important! ***\n"
@@ -503,15 +572,26 @@ int main(int argc, char *argv[])
 			bool listOnly = (arg == "-l" || arg == "--list");
 			if (i < argc - 1) {
 				CMuleCollection my_collection;
-				if (my_collection.Open( /* emulecollection file */ argv[++i] ))
+				string rawCollectionPath = argv[++i];
+				wxString normalizedCollectionPath;
+				if (!NormalizeAbsoluteFilePathNoTraversal(wxString(rawCollectionPath.c_str(), wxConvFile), normalizedCollectionPath)) {
+					std::cerr << "Invalid emulecollection path (must be absolute without traversal): " << rawCollectionPath << std::endl;
+					errors = true;
+					continue;
+				}
+
+				if (my_collection.Open(ToFileSystemPath(normalizedCollectionPath)))
 				{
 					for(size_t e = 0; e < my_collection.size(); e++)
 						if (listOnly)
 							std::cout << my_collection[e] << std::endl;
 						else
-							writeLink( my_collection[e], config_path );
+							if (!writeLink( my_collection[e], config_path )) {
+								errors = true;
+								break;
+							}
 				} else {
-					std::cerr << "Invalid emulecollection file: " << argv[i] << std::endl;
+					std::cerr << "Invalid emulecollection file: " << rawCollectionPath << std::endl;
 					errors = true;
 				}
 			} else {

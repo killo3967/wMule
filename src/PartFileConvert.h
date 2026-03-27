@@ -62,6 +62,7 @@ public:
 	static void	ConvertToeMule(const CPath& file, bool deletesource = false);
 	static void	StartThread();
 	static void	StopThread();
+	static bool	CanDeleteSource(const CPath& folder);
 
 	static void	RemoveJob(unsigned id);
 	static void	RetryJob(unsigned id);

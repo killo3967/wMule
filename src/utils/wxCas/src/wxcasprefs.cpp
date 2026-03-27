@@ -31,6 +31,8 @@
 #include <wx/config.h>
 #include <wx/dirdlg.h>
 
+#include <common/Path.h>
+
 #include "wxcasprefs.h"
 #include "wxcascte.h"
 #include "wxcasframe.h"
@@ -319,7 +321,13 @@ void WxCasPrefs::OnOSPathBrowseButton ( wxCommandEvent& WXUNUSED( event ) )
 		wxDD_DEFAULT_STYLE,
 		wxDefaultPosition, this);
 	if ( !dir.empty () ) {
-		m_osPathTextCtrl->SetValue ( dir );
+		wxString normalized;
+		if (NormalizeSharedPath(dir, normalized)) {
+			m_osPathTextCtrl->SetValue ( normalized );
+		} else {
+			wxMessageBox(_( "The selected path is not a valid absolute directory." ),
+				_("Invalid directory"), wxOK | wxICON_ERROR, this);
+		}
 	}
 }
 
@@ -334,7 +342,13 @@ WxCasPrefs::OnAutoStatImgBrowseButton ( wxCommandEvent& WXUNUSED( event ) )
 		wxDefaultPosition, this);
 
 	if ( !dir.empty () ) {
-		m_autoStatImgTextCtrl->SetValue ( dir );
+		wxString normalized;
+		if (NormalizeSharedPath(dir, normalized)) {
+			m_autoStatImgTextCtrl->SetValue ( normalized );
+		} else {
+			wxMessageBox(_( "The selected path is not a valid absolute directory." ),
+				_("Invalid directory"), wxOK | wxICON_ERROR, this);
+		}
 	}
 }
 

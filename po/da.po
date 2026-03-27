@@ -170,7 +170,7 @@ msgstr ""
 
 #: src/amule.cpp:1045
 #, c-format
-msgid "This is the first time you run aMule %s"
+msgid "This is the first time you run wMule %s"
 msgstr ""
 
 #: src/amule.cpp:1047

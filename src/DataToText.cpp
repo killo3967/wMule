@@ -90,7 +90,7 @@ const wxString GetSoftName(unsigned int software_ident)
 		case SO_LXMULE:
 			return wxT("(l/x)Mule");
 		case SO_AMULE:
-			return wxT("aMule");
+			return wxT("wMule");
 		case SO_SHAREAZA:
 		case SO_NEW_SHAREAZA:
 		case SO_NEW2_SHAREAZA:

@@ -58,7 +58,7 @@ CamuleAppCommon::CamuleAppCommon()
 	ec_config = false;
 	m_geometryEnabled = false;
 	if (IsRemoteGui()) {
-		m_appName		= wxT("aMuleGUI");
+		m_appName		= wxT("wMuleGUI");
 		m_configFile	= wxT("remote.conf");
 		m_logFile		= wxT("remotelogfile");
 	} else {
@@ -66,9 +66,9 @@ CamuleAppCommon::CamuleAppCommon()
 		m_logFile		= wxT("logfile");
 
 		if (IsDaemon()) {
-			m_appName	= wxT("aMuleD");
+			m_appName	= wxT("wMuleD");
 		} else {
-			m_appName	= wxT("aMule");
+			m_appName	= wxT("wMule");
 		}
 	}
 }
@@ -209,7 +209,7 @@ wxString CamuleAppCommon::CreateED2kLink(const CAbstractFile *f, bool add_source
 
 bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 {
-	theApp->SetAppName(wxT("aMule"));
+	theApp->SetAppName(wxT("wMule"));
 	FullMuleVersion = GetFullMuleVersion();
 	OSDescription = wxGetOsDescription();
 	OSType = OSDescription.BeforeFirst( wxT(' ') );
@@ -334,7 +334,7 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 
 	AddLogLineNS(wxT("Initialising ") + FullMuleVersion);
 
-	// Ensure that "~/.aMule/" is accessible.
+	// Ensure that "~/.wMule/" is accessible.
 	CPath outDir;
 	if (!CheckMuleDirectory(wxT("configuration"), CPath(thePrefs::GetConfigDir()), wxEmptyString, outDir)) {
 		return false;
@@ -375,9 +375,9 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 	}
 
 #if defined(__WXMAC__) && defined(AMULE_DAEMON)
-	//#warning TODO: fix wxSingleInstanceChecker for amuled on Mac (wx link problems)
+//#warning TODO: fix wxSingleInstanceChecker for amuled on Mac (wx link problems)
 	AddLogLineCS(wxT("WARNING: The check for other instances is currently disabled in amuled.\n"
-		"Please make sure that no other instance of aMule is running or your files might be corrupted.\n"));
+		"Please make sure that no other instance of wMule is running or your files might be corrupted.\n"));
 #else
 	AddLogLineNS(wxT("Checking if there is an instance already running..."));
 
@@ -461,9 +461,9 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 }
 
 /**
- * Returns a description of the version of aMule being used.
+ * Returns a description of the version of wMule being used.
  *
- * @return A detailed description of the aMule version, including application
+ * @return A detailed description of the wMule version, including application
  *         name and wx information.
  */
 const wxString CamuleAppCommon::GetFullMuleVersion() const
@@ -502,7 +502,7 @@ bool CamuleAppCommon::CheckPassedLink(const wxString &in, wxString &out, int cat
 
 
 /**
- * Checks permissions on a aMule directory, creating if needed.
+ * Checks permissions on a wMule directory, creating if needed.
  *
  * @param desc A description of the directory in question, used for error messages.
  * @param directory The directory in question.
@@ -520,7 +520,7 @@ bool CamuleAppCommon::CheckMuleDirectory(const wxString& desc, const CPath& dire
 	} else if (directory.DirExists()) {
 		// Strings are not translated here because translation isn't up yet.
 		msg = CFormat(wxT("Permissions on the %s directory too strict!\n")
-			wxT("aMule cannot proceed. To fix this, you must set read/write/exec\n")
+			wxT("wMule cannot proceed. To fix this, you must set read/write/exec\n")
 			wxT("permissions for the folder '%s'"))
 				% desc % directory;
 	} else if (CPath::MakeDir(directory)) {

@@ -34,18 +34,24 @@
 #include <wx/dir.h>
 #include <wx/stdpaths.h>
 #include <wx/stopwatch.h>
+#include <wx/filename.h>
 #include <wx/tokenzr.h>
 #include <wx/utils.h>				// Needed for wxBusyCursor
+
+#include <set>
+#include <vector>
 
 #include "amule.h"
 #include "config.h"				// Needed for PACKAGE_STRING
 
 #include "CFile.h"
 #include <common/MD5Sum.h>
+#include <common/SecretHash.h>
 #include "Logger.h"
 #include <common/Format.h>			// Needed for CFormat
 #include <common/TextFile.h>			// Needed for CTextFile
 #include <common/ClientVersion.h>
+#include <common/Path.h>
 
 #include "UserEvents.h"
 
@@ -378,6 +384,17 @@ public:
 	 : Cfg_Str( keyname, value, defaultVal )
 	{}
 
+	virtual void LoadFromFile(wxConfigBase* cfg) override
+	{
+		Cfg_Str::LoadFromFile(cfg);
+		bool migrated = false;
+		wxString normalized = SecretHash::NormalizeStoredSecret(m_value, migrated);
+		if (migrated && cfg) {
+			cfg->Write(GetKey(), normalized);
+		}
+		m_value = normalized;
+	}
+
 #ifndef AMULE_DAEMON
 	virtual bool TransferFromWindow()
 	{
@@ -386,7 +403,8 @@ public:
 
 			// Only recalucate the hash for new, non-empty passwords
 			if ( HasChanged() && !m_value.IsEmpty() ) {
-				m_value = MD5Sum( m_value ).GetHash();
+				wxString md5 = MD5Sum(m_value).GetHash();
+				m_value = SecretHash::BuildPBKDF2FromMD5(md5);
 			}
 
 			return true;
@@ -415,6 +433,11 @@ public:
 		Cfg_Str::LoadFromFile(cfg);
 
 		m_real_path = CPath::FromUniv(m_temp_path);
+		wxString normalized;
+		if (NormalizeAbsolutePath(m_real_path.GetRaw(), normalized)) {
+			m_real_path = CPath(normalized);
+			m_temp_path = normalized;
+		}
 	}
 
 
@@ -439,8 +462,15 @@ public:
 	virtual bool TransferFromWindow()
 	{
 		if (Cfg_Str::TransferFromWindow()) {
-			m_real_path = CPath(m_temp_path);
-			return true;
+			wxString normalized;
+			if (NormalizeAbsolutePath(m_temp_path, normalized)) {
+				m_real_path = CPath(normalized);
+				m_temp_path = normalized;
+				return true;
+			}
+			wxString msg = CFormat(_("The path '%s' is not a valid absolute directory.")) % m_temp_path;
+			theApp->ShowAlert(msg, _("Invalid directory"), wxOK | wxICON_ERROR);
+			m_temp_path = m_real_path.GetRaw();
 		}
 
 		return false;
@@ -1452,6 +1482,44 @@ void CPreferences::CheckUlDlRatio()
 }
 
 
+CPreferences::PathList CPreferences::SanitizeSharedDirectories(const PathList& rawList)
+{
+	PathList sanitized;
+	std::set<wxString> seenPaths;
+
+	const CPath configDir(GetConfigDir());
+	const CPath tempDir(GetTempDir());
+	const wxString homeDirString = wxFileName::GetHomeDir();
+	const CPath homeDir(homeDirString);
+
+	for (PathList::const_iterator it = rawList.begin(); it != rawList.end(); ++it) {
+		wxString normalized;
+		if (!NormalizeSharedPath(it->GetRaw(), normalized)) {
+			AddLogLineN(CFormat(_("Ignoring invalid shared directory entry: %s")) % it->GetPrintable());
+			continue;
+		}
+
+		if (!seenPaths.insert(normalized).second) {
+			AddDebugLogLineN(logGeneral,
+				CFormat(wxT("Duplicate shared directory entry ignored: %s")) % normalized);
+			continue;
+		}
+
+		CPath candidate(normalized);
+		if ((configDir.IsOk() && candidate.IsSameDir(configDir)) ||
+			(tempDir.IsOk() && candidate.IsSameDir(tempDir)) ||
+			(homeDir.IsOk() && candidate.IsSameDir(homeDir))) {
+			AddLogLineN(CFormat(_("Ignoring forbidden shared directory entry: %s")) % candidate.GetPrintable());
+			continue;
+		}
+
+		sanitized.push_back(candidate);
+	}
+
+	return sanitized;
+}
+
+
 void CPreferences::Save()
 {
 	wxString fullpath(s_configDir + wxT("preferences.dat"));
@@ -1474,6 +1542,8 @@ void CPreferences::Save()
 
 	#ifndef CLIENT_GUI
 	CTextFile sdirfile;
+	PathList sanitizedShared = SanitizeSharedDirectories(shareddir_list);
+	shareddir_list.swap(sanitizedShared);
 	if (sdirfile.Open(s_configDir + wxT("shareddir.dat"), CTextFile::write)) {
 		for (size_t i = 0; i < shareddir_list.size(); ++i) {
 			sdirfile.WriteLine(shareddir_list[i].GetRaw(), wxConvUTF8);
@@ -1579,7 +1649,17 @@ void CPreferences::LoadCats()
 		Category_Struct* newcat = new Category_Struct;
 
 		newcat->title = cfg->Read( wxT("Title"), wxEmptyString );
-		newcat->path  = CPath::FromUniv(cfg->Read(wxT("Incoming"), wxEmptyString));
+
+		wxString rawPath = cfg->Read(wxT("Incoming"), wxEmptyString);
+		wxString normalizedPath;
+		if (!NormalizeCategoryPath(rawPath, normalizedPath)) {
+			AddLogLineN(_("Invalid category directory detected; using default incoming directory."));
+			normalizedPath = thePrefs::GetIncomingDir().GetRaw();
+		} else if (!IsAllowedCategoryDir(CPath(normalizedPath))) {
+			AddLogLineN(_("Category directory outside allowed shared roots; using default incoming directory."));
+			normalizedPath = thePrefs::GetIncomingDir().GetRaw();
+		}
+		newcat->path  = CPath(normalizedPath);
 
 		// Some sanity checking
 		if ( newcat->title.IsEmpty() || !newcat->path.IsOk() ) {
@@ -1686,13 +1766,23 @@ bool CPreferences::UpdateCategory(
 
 	// return true if path is ok, false if not
 	bool ret = true;
-	if (!path.IsOk() || (!path.DirExists() && !CPath::MakeDir(path))) {
+	wxString normalizedPath;
+	if (!NormalizeCategoryPath(path.GetRaw(), normalizedPath)) {
+		AddLogLineCS(_("Rejected invalid category directory; keeping previous value."));
 		ret = false;
-		// keep path as it was
-	} else if (category->path != path) {
-		// path changed: reload shared files, adding files in the new path and removing those from the old path
-		category->path		= path;
-		theApp->sharedfiles->Reload();
+	} else if (!IsAllowedCategoryDir(CPath(normalizedPath))) {
+		AddLogLineCS(_("Rejected category directory outside allowed shared roots; keeping previous value."));
+		ret = false;
+	} else {
+		CPath normalized(normalizedPath);
+		if (!normalized.IsOk() || (!normalized.DirExists() && !CPath::MakeDir(normalized))) {
+			AddLogLineCS(_("Could not use category directory; keeping previous value."));
+			ret = false;
+		} else if (category->path != normalized) {
+			// path changed: reload shared files, adding files in the new path and removing those from the old path
+			category->path		= normalized;
+			theApp->sharedfiles->Reload();
+		}
 	}
 	category->title			= name;
 	category->comment		= comment;
@@ -1783,14 +1873,33 @@ void CPreferences::ReloadSharedFolders()
 	if (file.Open(s_configDir + wxT("shareddir.dat"), CTextFile::read)) {
 		wxArrayString lines = file.ReadLines(txtReadDefault, wxConvUTF8);
 
+		std::set<wxString> seenPaths;
 		for (size_t i = 0; i < lines.size(); ++i) {
-			CPath path(lines[i]);
-
-			if (path.DirExists()) {
-				shareddir_list.push_back(path);
-			} else {
-				AddLogLineN(CFormat(_("Dropping non-existing shared directory: %s")) % path.GetPrintable());
+			wxString entry = lines[i];
+			entry.Trim(true).Trim(false);
+			if (entry.IsEmpty()) {
+				continue;
 			}
+
+			wxString normalized;
+			if (!NormalizeSharedPath(entry, normalized)) {
+				AddLogLineN(CFormat(_("Dropping invalid shared directory entry: %s")) % entry);
+				continue;
+			}
+
+			CPath path(normalized);
+			if (!path.DirExists()) {
+				AddLogLineN(CFormat(_("Dropping non-existing shared directory: %s")) % path.GetPrintable());
+				continue;
+			}
+
+			if (!seenPaths.insert(normalized).second) {
+				AddDebugLogLineN(logGeneral,
+					CFormat(wxT("Duplicate shared directory entry ignored: %s")) % normalized);
+				continue;
+			}
+
+			shareddir_list.push_back(path);
 		}
 	}
 #endif
@@ -1851,4 +1960,22 @@ void CPreferences::SetLastHTTPDownloadURL(uint8 t, const wxString& val)
 	cfg->Write(key, val);
 }
 
-// File_checked_for_headers
+bool CPreferences::IsAllowedCategoryDir(const CPath& path) const
+{
+	if (!path.IsOk()) {
+		return false;
+	}
+
+	const CPath& incoming = GetIncomingDir();
+	if (IsSubPathOf(incoming, path)) {
+		return true;
+	}
+
+	for (PathList::const_iterator it = shareddir_list.begin(); it != shareddir_list.end(); ++it) {
+		if (IsSubPathOf(*it, path)) {
+			return true;
+		}
+	}
+
+	return false;
+}

@@ -36,6 +36,7 @@
 #include "amuleDlg.h"			// Needed for CamuleDlg
 #include "SearchDlg.h"			// Needed for UpdateCatChoice
 #include <common/StringFunctions.h>	// Needed for MakeFoldername
+#include <common/Path.h>
 #include "OtherFunctions.h"		// Needed for CastChild
 #include "Preferences.h"		// Needed for CPreferences
 #include "amule.h"			// Needed for theApp
@@ -125,7 +126,13 @@ void CCatDialog::OnBnClickedBrowse(wxCommandEvent& WXUNUSED(evt))
 		_("Choose a folder for incoming files"),
 		dir, wxDD_DEFAULT_STYLE, wxDefaultPosition, this);
 	if (!dir.IsEmpty()) {
-		CastChild(IDC_INCOMING, wxTextCtrl)->SetValue(dir);
+		wxString normalized;
+		if (NormalizeSharedPath(dir, normalized)) {
+			CastChild(IDC_INCOMING, wxTextCtrl)->SetValue(normalized);
+		} else {
+			theApp->ShowAlert(CFormat(_("The path '%s' is not a valid absolute directory.")) % dir,
+				_("Invalid directory"), wxOK | wxICON_ERROR);
+		}
 	}
 }
 
@@ -142,16 +149,15 @@ void CCatDialog::OnBnClickedOk(wxCommandEvent& WXUNUSED(evt))
 		return;
 	}
 
-	CPath newpath = CPath(CastChild(IDC_INCOMING, wxTextCtrl)->GetValue());
-
-	// No empty dirs please
-	if (!newpath.IsOk()) {
-		wxMessageBox(
-			_("You must specify a path for the category!"),
-			_("Info"), wxOK, this);
-
+	const wxString requestedPath = CastChild(IDC_INCOMING, wxTextCtrl)->GetValue();
+	wxString normalizedPath;
+	if (!NormalizeSharedPath(requestedPath, normalizedPath)) {
+		theApp->ShowAlert(CFormat(_("The path '%s' is not a valid absolute directory.")) % requestedPath,
+			_("Invalid directory"), wxOK | wxICON_ERROR);
 		return;
 	}
+
+	CPath newpath(normalizedPath);
 
 	// remote gui:
 	// Pass path unchecked (and don't try to create it on the wrong machine...).

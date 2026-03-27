@@ -247,4 +247,51 @@ wxString JoinPaths(const wxString& path, const wxString& file);
  */
 CPath SanitizeFileName(const wxString& rawName);
 
+/**
+ * Validates a user-supplied rename target to ensure it is a plain filename
+ * (no separators, no traversal, no absolute paths) and returns the sanitized
+ * version. Returns false if validation fails or the sanitized name is empty.
+ */
+bool NormalizeRenameTarget(const wxString& rawName, CPath& sanitizedName);
+
+/**
+ * Normalizes a user-supplied directory path to an absolute canonical form.
+ * Returns false if the path is empty or cannot be normalized.
+ */
+bool NormalizeAbsolutePath(const wxString& rawPath, wxString& normalizedPath);
+
+/**
+ * Normalizes an absolute path rejecting traversal segments.
+ */
+bool NormalizeAbsolutePathNoTraversal(const wxString& rawPath, wxString& normalizedPath);
+
+/**
+ * Normalizes an absolute directory, rejecting traversal and ensuring existence.
+ */
+bool NormalizeAbsoluteDirNoTraversal(const wxString& rawPath, wxString& normalizedPath, bool createIfMissing);
+
+/**
+ * Normalizes an absolute file path rejecting traversal segments.
+ */
+bool NormalizeAbsoluteFilePathNoTraversal(const wxString& rawPath, wxString& normalizedPath);
+
+/**
+ * Normalizes a user-supplied shared directory path using aggressive cleanup
+ * (dot segments, tildes, env vars) and enforces that the result is absolute.
+ * Optionally a base directory can be passed to resolve relative inputs.
+ */
+bool NormalizeSharedPath(const wxString& rawPath, wxString& normalizedPath, const wxString& baseDir = wxString());
+
+/**
+ * Normalizes a category-specific directory path using the shared-path rules.
+ * Rejects empty or relative inputs; returns false on failure.
+ */
+bool NormalizeCategoryPath(const wxString& rawPath, wxString& normalizedPath);
+
+/**
+ * Returns true if 'child' is the same directory as 'parent' or lies inside it.
+ * Both paths must be valid (IsOk) and absolute.
+ */
+bool IsSubPathOf(const CPath& parent, const CPath& child);
+
 #endif

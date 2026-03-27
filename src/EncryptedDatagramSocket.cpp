@@ -99,12 +99,23 @@
 #include "./kademlia/kademlia/Kademlia.h"
 #include "RandomFunctions.h"
 #include "Statistics.h"
+#include "NetworkFunctions.h"
 
 #include <protocol/Protocols.h>
 #include <common/MD5Sum.h>
 
 // random generator
 #include "CryptoPP_Inc.h"	// Needed for Crypto functions
+
+namespace
+{
+	inline void LogObfuscatedDrop(uint32_t ip, const wxString& reason)
+	{
+		AddDebugLogLineN(logClientUDP, CFormat(wxT("Dropping obfuscated UDP packet from %s: %s"))
+			% KadIPToString(ip)
+			% reason);
+	}
+}
 
 #define CRYPT_HEADER_WITHOUTPADDING		    8
 #define	MAGICVALUE_UDP						91
@@ -152,6 +163,7 @@ int CEncryptedDatagramSocket::DecryptReceivedClient(uint8_t *bufIn, int bufLen, 
 	// might be an encrypted packet, try to decrypt
 	CRC4EncryptableBuffer receivebuffer;
 	uint32_t value = 0;
+	uint8_t attempts = 0;
 	// check the marker bit which type this packet could be and which key to test first, this is only an indicator since old clients have it set random
 	// see the header for marker bits explanation
 	uint8_t currentTry = ((bufIn[0] & 0x03) == 3) ? 1 : (bufIn[0] & 0x03);
@@ -167,6 +179,7 @@ int CEncryptedDatagramSocket::DecryptReceivedClient(uint8_t *bufIn, int bufLen, 
 	do {
 		receivebuffer.FullReset();
 		tries--;
+		bool keyReady = true;
 		MD5Sum md5;
 
 		if (currentTry == 0) {
@@ -177,6 +190,8 @@ int CEncryptedDatagramSocket::DecryptReceivedClient(uint8_t *bufIn, int bufLen, 
 				Kademlia::CKademlia::GetPrefs()->GetKadID().StoreCryptValue((uint8_t *)&keyData);
 				memcpy(keyData + 16, bufIn + 1, 2); // random key part sent from remote client
 				md5.Calculate(keyData, sizeof(keyData));
+			} else {
+				keyReady = false;
 			}
 		} else if (currentTry == 1) {
 			// ed2k packet
@@ -195,11 +210,19 @@ int CEncryptedDatagramSocket::DecryptReceivedClient(uint8_t *bufIn, int bufLen, 
 				PokeUInt32(keyData, Kademlia::CPrefs::GetUDPVerifyKey(ip));
 				memcpy(keyData + 4, bufIn + 1, 2); // random key part sent from remote client
 				md5.Calculate(keyData, sizeof(keyData));
+			} else {
+				keyReady = false;
 			}
 		} else {
 			wxFAIL;
 		}
 
+		if (!keyReady) {
+			currentTry = (currentTry + 1) % 3;
+			continue;
+		}
+
+		attempts++;
 		receivebuffer.SetKey(md5, true);
 		receivebuffer.RC4Crypt(bufIn + 3, (uint8_t*)&value, sizeof(value));
 		ENDIAN_SWAP_I_32(value);
@@ -223,8 +246,8 @@ int CEncryptedDatagramSocket::DecryptReceivedClient(uint8_t *bufIn, int bufLen, 
 		result -= CRYPT_HEADER_WITHOUTPADDING;
 
 		if (result <= padLen) {
-			//DebugLogError(_T("Invalid obfuscated UDP packet from clientIP: %s, Paddingsize (%u) larger than received bytes"), ipstr(dwIP), byPadLen);
-			return bufLen; // pass through, let the Receivefunction do the errorhandling on this junk
+			LogObfuscatedDrop(ip, CFormat(wxT("invalid padding %u for payload %u")) % padLen % result);
+			return 0;
 		}
 
 		if (padLen > 0) {
@@ -235,8 +258,8 @@ int CEncryptedDatagramSocket::DecryptReceivedClient(uint8_t *bufIn, int bufLen, 
 
 		if (kad) {
 			if (result <= 8) {
-				//DebugLogError(_T("Obfuscated Kad packet with mismatching size (verify keys missing) received from clientIP: %s"), ipstr(dwIP));
-				return bufLen; // pass through, let the Receivefunction do the errorhandling on this junk;
+				LogObfuscatedDrop(ip, wxT("missing Kad verify keys"));
+				return 0;
 			}
 			// read the verify keys
 			receivebuffer.RC4Crypt(bufIn + CRYPT_HEADER_WITHOUTPADDING + padLen, (uint8_t*)receiverVerifyKey, 4);
@@ -252,8 +275,8 @@ int CEncryptedDatagramSocket::DecryptReceivedClient(uint8_t *bufIn, int bufLen, 
 		theStats::AddDownOverheadCrypt(bufLen - result);
 		return result; // done
 	} else {
-		//DebugLogWarning(_T("Obfuscated packet expected but magicvalue mismatch on UDP packet from clientIP: %s"), ipstr(dwIP));
-		return bufLen; // pass through, let the Receivefunction do the errorhandling on this junk
+		LogObfuscatedDrop(ip, CFormat(wxT("unable to decrypt after %u attempt(s)")) % attempts);
+		return 0;
 	}
 }
 

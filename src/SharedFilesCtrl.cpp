@@ -26,6 +26,7 @@
 #include "SharedFilesCtrl.h"	// Interface declarations
 
 #include <common/MenuIDs.h>
+#include <common/Path.h>
 
 #include "muuli_wdr.h"			// Needed for ID_SHFILELIST
 #include "SharedFilesWnd.h"		// Needed for CSharedFilesWnd
@@ -686,9 +687,18 @@ void CSharedFilesCtrl::OnRename( wxCommandEvent& WXUNUSED(event) )
 			_("Enter new name for this file:"),
 			_("File rename"), file->GetFileName().GetPrintable());
 
-		CPath newName = CPath(strNewName);
-		if (newName.IsOk() && (newName != file->GetFileName())) {
-			theApp->sharedfiles->RenameFile(file, newName);
+		if (strNewName.IsEmpty()) {
+			return;
+		}
+
+		CPath sanitizedName;
+		if (!NormalizeRenameTarget(strNewName, sanitizedName)) {
+			theApp->ShowAlert(_("Invalid file name."), _("File rename"), wxOK | wxICON_ERROR);
+			return;
+		}
+
+		if (sanitizedName != file->GetFileName()) {
+			theApp->sharedfiles->RenameFile(file, sanitizedName);
 		}
 	}
 }

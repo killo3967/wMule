@@ -29,6 +29,7 @@
 #include <common/MenuIDs.h>
 
 #include <common/Format.h>	// Needed for CFormat
+#include <common/Path.h>
 #include "amule.h"		// Needed for theApp
 #include "amuleDlg.h"		// Needed for CamuleDlg
 #include "BarShader.h"		// Needed for CBarShader
@@ -812,9 +813,18 @@ void CDownloadListCtrl::OnKeyPressed( wxKeyEvent& event )
 						_("Enter new name for this file:"),
 						_("File rename"), file->GetFileName().GetPrintable());
 
-					CPath newName = CPath(strNewName);
-					if (newName.IsOk() && (newName != file->GetFileName())) {
-						theApp->sharedfiles->RenameFile(file, newName);
+					if (strNewName.IsEmpty()) {
+						break;
+					}
+
+					CPath sanitizedName;
+					if (!NormalizeRenameTarget(strNewName, sanitizedName)) {
+						theApp->ShowAlert(_("Invalid file name."), _("File rename"), wxOK | wxICON_ERROR);
+						break;
+					}
+
+					if (sanitizedName != file->GetFileName()) {
+						theApp->sharedfiles->RenameFile(file, sanitizedName);
 					}
 				}
 			}
@@ -1435,7 +1445,7 @@ void CDownloadListCtrl::PreviewFile(CPartFile* file)
 			_("File preview"), wxOK, this);
 		// Since newer versions for some reason mplayer does not automatically
 		// select video output device and needs a parameter, go figure...
-		command = wxT("xterm -T \"aMule Preview\" -iconic -e mplayer ") QUOTE wxT("$file") QUOTE;
+		command = wxT("xterm -T \"wMule Preview\" -iconic -e mplayer ") QUOTE wxT("$file") QUOTE;
 	} else {
 		command = thePrefs::GetVideoPlayer();
 	}

@@ -94,7 +94,7 @@
 
 ### Tareas
 #### 1.1 Parsing de paquetes eD2K/Kad
-- [x] **Bloque A (UDP inmediato)**: reforzar `ClientUDPSocket.cpp` para: (a) no leer protocolo/opcode si `packetLen < 2`, (b) rechazar paquetes comprimidos cuya descompresión supere el límite aceptado y (c) aplicar heurísticas claras de logging en `EncryptedDatagramSocket.cpp` sin depender de lecturas fuera de rango. *(24/03/2026: a-b implementados en `ClientUDPSocket.cpp`; `EncryptedDatagramSocket.cpp` ahora descarta y loguea padding/magic/value inválidos sin entregar el paquete aguas arriba.)*
+- [x] **Bloque A (UDP inmediato)**: reforzar `ClientUDPSocket.cpp` para: (a) no leer protocolo/opcode si `packetLen < 2`, (b) rechazar paquetes comprimidos cuya descompresión supere el límite aceptado y (c) aplicar heurísticas claras de logging en `EncryptedDatagramSocket.cpp` sin depender de lecturas fuera de rango. *(24/03/2026: a-b implementados en `ClientUDPSocket.cpp`; `EncryptedDatagramSocket.cpp` ahora descarta y loguea padding/magic/value inválidos sin entregar el paquete aguas arriba. El límite global vive en `ClientUDPGuards.h` → `MAX_KAD_UNCOMPRESSED_PACKET = 128 KiB`.)*
 - [x] **Bloque B (Handlers Kad)**: revisar `KademliaUDPListener.cpp` empezando por `AddContact2`, `Process2BootstrapResponse`, `Process2PublishKeyRequest`, `Process2PublishSourceRequest`, `ProcessCallbackRequest` y `ProcessFirewalled2Request`, añadiendo prechecks de tamaño, límites de conteos remotos y rechazo explícito de respuestas no solicitadas. *(24/03/2026: `EnsureKadPayload` + límites de contactos/tags/audio aplicados a todos los handlers verificados; `ProcessSearchResponse`/`Process2SearchResponse` validan tracklist y limitan resultados, `Process2Search*` y `Process2PublishNotesRequest` endurecidos.)*
 - [x] Validar longitudes antes de `memcpy`/`Read` en todos los puntos identificados; cuando aplique, reemplazar buffers estáticos por `std::vector<uint8_t>` o `CMemFile` seguro. *(Implementado en todos los handlers Kad.)*
 - [x] Rechazar opcodes desconocidos o tamaños fuera de rango con mensajes en logs en lugar de silencios. *(ProcessPacket ahora loguea y descarta opcodes no soportados con contexto de IP/len; las macros de tamaño continúan arrojando excepciones con logs previos.)*
@@ -102,7 +102,7 @@
 
 #### 1.2 Protección contra SSRF / Reflection en UPnP
 - [x] Endurecer helpers XML en `UPnPBase.cpp` / `UPnPBase.h` para tratar nulos y XML malformado sin crashes. *(24/03/2026: `AssignLanUrlOrClear` + `FormatUPnPEventLog` encapsulan validaciones y `CUPnPService::Execute`, `GetStateVariable`, `Subscribe`, `Unsubscribe` y `OnEventReceived` ahora validan docs/SIDs/URLs antes de proceder.)*
-- [x] Validar `LOCATION`, `URLBase`, `SCPDURL`, `controlURL` y `eventSubURL` antes de aceptar una respuesta: solo se admitirán esquemas `http/https`, hosts pertenecientes a la LAN local y puertos válidos. *(24/03/2026: `UPnPUrlUtils` + `AssignIfLanUrl` y verificaciones en `AddRootDevice`, `CUPnPService`, `CUPnPDevice`.)*
+- [x] Validar `LOCATION`, `URLBase`, `SCPDURL`, `controlURL` y `eventSubURL` antes de aceptar una respuesta: solo se admitirán esquemas `http/https`, hosts pertenecientes a la LAN local y puertos válidos. *(24/03/2026: `UPnPUrlUtils` + `AssignLanUrlOrClear` y verificaciones en `AddRootDevice`, `CUPnPService`, `CUPnPDevice`.)*
 - [x] Limitar quién puede anunciarse (solo red local), añadir timeouts y máximo de intentos tanto en descubrimiento como en port mapping. *(25/03/2026: añadida lógica de retry con backoff exponencial en `AddPortMappings`, `m_defaultMaxRetries=3`, `m_initialRetryDelayMs=500`, logging de intentos y resultados.)*
 - [x] Registrar intentos sospechosos y exponer estado de mapping en UI/logs, garantizando fallback claro si UPnP falla. *(25/03/2026: logs de reintentos y fallos en `AddPortMappings`.)*
 - [x] **Política UPnP aceptada**: ignorar cualquier respuesta cuya URL u origen no sea LAN/local incluso si actualmente funciona en routers “permisivos”.
@@ -138,12 +138,13 @@
   - Documentación actualizada (`PLAN_MODERNIZACION_2.0.md`, `AGENTS.md`) con metodología, checkboxes y política de ramas.
   - `do_build_ninja.bat` crea `build-ninja/` y genera `compile_commands.json`; `.vscode/settings.json` apunta a ese directorio para clangd.
 - 2026-03-24: `ClientUDPSocket.cpp` aplicó el límite de descompresión (128 KiB) y `KademliaUDPListener.cpp` añadió `EnsureKadPayload`, topes de contactos (200), entradas publicadas (64) y tags (64) en `AddContact2`, `Process2BootstrapResponse`, `Process2Publish*`, `ProcessCallbackRequest` y `ProcessFirewalled*`. `EncryptedDatagramSocket.cpp` descarta paquetes ofuscados con magic/padding inválidos y `ProcessSearchResponse`/`Process2SearchResponse` (más `Process2Search*`) validan tracklist y límites de resultados etiquetados. Build/tests tras esta tanda: `cmake --build . --config Debug` + `ctest -C Debug` (24/03/2026, 12/12 verdes).
-- 2026-03-24: `ClientUDPSocket.cpp` aplicó el límite de descompresión (128 KiB) y `KademliaUDPListener.cpp` añadió `EnsureKadPayload`, topes de contactos (200), entradas publicadas (64) y tags (64) en `AddContact2`, `Process2BootstrapResponse`, `Process2Publish*`, `ProcessCallbackRequest` y `ProcessFirewalled*`. `EncryptedDatagramSocket.cpp` descarta paquetes ofuscados con magic/padding inválidos y `ProcessSearchResponse`/`Process2SearchResponse` (más `Process2Search*`) validan tracklist y límites de resultados etiquetados. Build/tests tras esta tanda: `cmake --build . --config Debug` + `ctest -C Debug` (24/03/2026, 12/12 verdes).
 - 2026-03-24 (tarde): Se factorizaron los guards Kad en `src/kademlia/net/KadPacketGuards.h`, se añadieron pruebas MuleUnit (`KadPacketGuardsTest`) para `EnsureKadPayload`/`EnsureKadTagCount`, y se reconstruyeron `wmule`, `wmulecmd` y toda la matriz de tests (`cmake --build . --config Debug`, `ctest -C Debug`, 13/13). `PLAN_MODERNIZACION_2.0.md` actualizado con el nuevo alcance del Bloque B.
+- 2026-03-24 (ClientUDPGuards): se movieron los límites de payload comprimido/descomprimido y los helpers de validación a `src/ClientUDPGuards.h` para compartir política entre `ClientUDPSocket` y MuleUnit (`ClientUDPTest`).
 - 2026-03-24 (noche): `Process2HelloResponseAck`, `ProcessKademlia2Request`, `ProcessKademlia2Response`, `ProcessFindBuddyRequest/Response` y `Process2Search*` reciben `KadPacketGuards`, se añadieron más casos en `KadPacketGuardsTest` y se validó con build + `ctest -C Debug` (13/13).
-- 2026-03-24 (UPnP SSRF): se crearon `UPnPUrlUtils` y `AssignIfLanUrl`, se validó URLBase/SCPD/control/event/presentation antes de registrar dispositivos/servicios, y se endurecieron `CUPnPService::Execute`, `GetStateVariable`, `Subscribe`/`Unsubscribe`, `OnEventReceived` y `AddRootDevice`. Build/tests: `cmake --build . --config Debug`, `ctest -C Debug` (14/14).
+- 2026-03-24 (UPnP SSRF): se crearon `UPnPUrlUtils` y `AssignLanUrlOrClear`, se validó URLBase/SCPD/control/event/presentation antes de registrar dispositivos/servicios, y se endurecieron `CUPnPService::Execute`, `GetStateVariable`, `Subscribe`/`Unsubscribe`, `OnEventReceived` y `AddRootDevice`. Build/tests: `cmake --build . --config Debug`, `ctest -C Debug` (14/14). `UPnPEventLog` formatea la lista de propiedades ignorando nodos corruptos.
 - 2026-03-24 (Tests parsing): se añadieron `ClientUDPTest`, `KadHandlerFuzzTest` y `UPnPXmlSafetyTest` (este último solo se compila con `ENABLE_UPNP=ON`) para cubrir límites de descompresión, ventanas de payloads y formateo/log de eventos. Build: `cmake --build . --config Debug` (ctest parcial: `KadHandlerFuzzTest`, `ClientUDPTest`).
 - 2026-03-24 (UPnP ENABLE_UPNP=ON): se filtraron las rutas erróneas que `UPNP::Shared`/`IXML::Shared` exportaban (`.../COMPONENT`, `.../UPNP_Development`), se añadió la dependencia explícita a `PThreads4W` y se reconstruyó con `cmake .. -DENABLE_UPNP=ON` + `cmake --build . --config Debug`. Los tests focalizados `ctest -R "ClientUDPTest|KadHandlerFuzzTest|KadPacketGuardsTest|UPnPUrlUtilsTest|UPnPXmlSafetyTest" -C Debug` quedaron en verde, y `UPnPEventLog` ahora usa `ixmlNode_getFirstChild` para obtener el root sin depender de APIs inexistentes.
+- 2026-03-26: los nuevos binarios MuleUnit (`ClientUDPTest`, `KadHandlerFuzzTest`, `KadPacketGuardsTest`, `UPnPUrlUtilsTest`, `UPnPXmlSafetyTest`) se añadieron a `unittests/tests/CMakeLists.txt`. `ctest` los ejecuta (salvo `UPnPXmlSafetyTest`, que solo se compila con `ENABLE_UPNP=ON`).
 - 2026-03-25: Fase 1 completada. Añadida lógica de retry con backoff exponencial en `UPnPBase.cpp` (`m_defaultMaxRetries=3`, `m_initialRetryDelayMs=500`), validación de payloads en todos los handlers Kad verificada, límites de descompresión (128 KiB) activos, y tests pasando (16/16). Build: `cmake --build . --config Debug` + `ctest -C Debug`.
 
 ---
@@ -154,22 +155,65 @@
 
 ### Tareas
 #### 2.1 Path Traversal & FS Safety
-- [ ] Crear helper común (p. ej. `NormalizeSharedPath`) que use `wxFileName::Normalize(wxPATH_NORM_ALL | wxPATH_NORM_DOTS | wxPATH_NORM_TILDE)` y verifique `IsRelative` antes de aceptar rutas externas.
-- [ ] Aplicar el helper a todos los puntos de entrada de paths externos: `PartFile.cpp`, `DownloadQueue.cpp`, `ClientCreditsList.cpp`, `PrefsUnifiedDlg.cpp` (directorios configurables), generación de catálogos (`DirectoryTreeCtrl`, diálogos de rutas) y cualquier uso de `wxFileDialog`/`wxDirDialog` que copie rutas directamente.
-- [ ] Rechazar explícitamente rutas absolutas que salgan de `ConfigDir/Temp/Incoming` y detectar `..` (con log + mensaje al usuario).
-- [ ] Añadir MuleUnit tests (`PathTraversalTest` o similar) que prueben entradas con `..`, rutas UNC, rutas absolutas Windows/Linux y rutas válidas.
+- [x] Crear helper común (p. ej. `NormalizeSharedPath`) que use `wxFileName::Normalize(wxPATH_NORM_ALL | wxPATH_NORM_DOTS | wxPATH_NORM_TILDE)` y verifique `IsRelative` antes de aceptar rutas externas.
+- [ ] Aplicar el helper a todos los puntos de entrada de paths externos.
+  - [x] `PrefsUnifiedDlg.cpp`: selectores de Temp/Incoming/OS ya normalizan y alertan.
+  - [x] `CatDialog.cpp`: selector + validación en OK.
+  - [x] `PartFileConvertDlg.cpp`: `wxDirSelector` validado antes de importar.
+  - [x] `wxcasprefs.cpp` / `wxcasframe.cpp`: selectores de directorios/ficheros normalizados.
+  - [x] `aLinkCreator (alcframe.cpp)`: selectores de fichero normalizados.
+  - [x] `PrefsUnifiedDlg.cpp`: selectores de ejecutables (`OnButtonBrowseApplication`).
+  - [ ] `DownloadQueue.cpp`: validaciones cuando se añaden directorios compartidos desde la UI/EC.
+  - [x] `SharedFileList.cpp`: defensas al consumir rutas compartidas (descarta entradas inválidas o no absolutas).
+  - [x] Web/EC: sanitizar rutas que lleguen desde conectores remotos.
+  - [x] Categorías (GUI + EC/Web) solo aceptan rutas bajo Incoming o raíces compartidas declaradas (fallback automático a Incoming si son inválidas).
+  - [x] Renombrado (GUI/CLI) restringido a nombres base y `SharedFileList` bloquea movimientos fuera de directorios autorizados.
+  - [x] `PartFileConvert` valida directorios a importar y solo permite `deleteSource` dentro de Temp/Incoming.
+  - [x] `ED2KLinkParser` y `--config-dir` normalizan rutas absolutas antes de leer/escribir `ED2KLinks` o colecciones.
+  - [x] `shareddir_list` se sanitiza al guardarse desde la GUI/EC y solo persiste rutas normalizadas (sin duplicados ni carpetas prohibidas).
+- [ ] Rechazar explícitamente rutas absolutas que salgan de `ConfigDir/Temp/Incoming` cuando el campo represente ubicaciones internas (p. ej. `.met`, directorios de trabajo) y documentar el límite.
+- [x] Añadir MuleUnit tests (`PathTraversalTest`) que cubran `..`, rutas UNC y absolutas Windows/Linux.
 
 #### 2.2 Configuración EC / Remota
 - [x] Mantener EC desactivado por defecto (`thePrefs::EnableExternalConnections(false)`). *(Implementado en `Preferences.cpp`: EC sólo se activa manualmente o desde `ec-config`, y la UI vuelve a desactivar si no hay password.)*
-- [ ] Reemplazar el almacenamiento legacy (`Cfg_Str_Encrypted`/hash MD5) por PBKDF2/Argon2 o `wxSecretValue` persistente.
-- [ ] Limpiar logs de credenciales/hashes y sustituirlos por mensajes neutros (véase `ExternalConn.cpp:496-499`).
+- [x] Diseñar el formato de credencial seguro + estrategia de migración. *(Ver sección “Diseño PBKDF2 + migración”.)*
+- [x] Reemplazar el almacenamiento legacy (`Cfg_Str_Encrypted`/hash MD5) por el formato PBKDF2 definido.
+- [x] Limpiar logs de credenciales/hashes y sustituirlos por mensajes neutros (véase `ExternalConn.cpp:496-499`).
 - [ ] Añadir aviso y confirmación explícita cuando EC se active manualmente (Prefs + CLI), registrando quién lo activa y por qué.
+- [ ] Actualizar `ExternalConn.cpp`, `ExternalConnector.cpp`, `RemoteConnect.cpp` y `WebInterface.cpp` para que hablen el nuevo formato versionado sin romper compatibilidad (detectar hashes legacy y migrarlos al vuelo).
+  - [x] `Preferences.cpp` / `Cfg_Str_Encrypted`: persistir PBKDF2 y migrar entradas legacy al guardar.
+  - [x] `ExternalConn.cpp`: validar secretos nuevos, añadir tag `EC_TAG_PBKDF2_PARAMS` y limpiar logs sensibles.
+  - [x] `ExternalConnector.cpp`: permitir `--password` plano y recalcular PBKDF2 con los parámetros recibidos; actualizar `remote.conf`.
+  - [x] `RemoteConnect.cpp`: consumir `EC_TAG_PBKDF2_PARAMS` y derivar el secreto en memoria antes del handshake.
+  - [x] `WebInterface.cpp` / `WebServer.cpp`: adoptar el mismo formato para Admin/Guest, exponer migraciones en log neutro.
 
 #### 2.3 UPnP/Servicios externos
 - [ ] Mantener UPnP habilitado y soportado para conectividad entrante **una vez** el build vuelva a enlazar con libupnp (ver incidencia en `docs/BUILD_MEMORY.md`).
 - [x] Implementar timeouts y retries limitados (backoff exponencial en `CUPnPControlPoint::AddPortMappings`).
 - [ ] Mostrar en UI/logs el estado real del mapeo (éxito/fallo/pendiente) y métricas de reintentos.
 - [ ] Proveer fallback claro cuando no se logra el mapping (mensaje y acción en preferencias + log).
+- [ ] Persistir el último resultado de UPnP (timestamp, router, puertos) para evitar repetir la misma operación si sabemos que fallará.
+
+##### Diseño PBKDF2 + migración (2026-03-26)
+
+- **Formato almacenado**: `pbkdf2-sha256$<iteraciones>$<salt_hex>$<dk_hex>`.
+  - `iteraciones`: entero decimal, valor inicial recomendado `150000`.
+  - `salt_hex`: 16 bytes aleatorios codificados en hex (32 caracteres).
+  - `dk_hex`: resultado de PBKDF2-HMAC-SHA256 de longitud 32 bytes (64 hex).
+- **Compatibilidad**:
+  - Cualquier valor que no empiece por `pbkdf2-sha256$` se trata como hash legacy (MD5 hex). Durante carga se marca como `legacy` y se reescribe al nuevo formato en cuanto el usuario confirme preferencias o ejecute `amulecmd --write-config`.
+  - Autenticación: el servidor comparará contra `dk_hex`. El handshake EC seguirá enviando un salt aleatorio (`m_passwd_salt`), pero añadiremos parámetros PBKDF2 (iteraciones + salt_hex) al paquete `EC_OP_AUTH_SALT` para que clientes CLI/Web puedan derivar `dk_hex` en tiempo real a partir del password plano introducido por el usuario. Posteriormente ambos lados harán `MD5( dk_hex.lower() + challengeSalt )` para no romper el resto del protocolo.
+  - Webserver comparte el mismo formato; `WebInterface.cpp` leerá y escribirá los nuevos secretos tal cual.
+- **Migración automática**:
+  1. Detectar hashes legacy (`^[0-9a-fA-F]{32}$`).
+  2. Generar salt PBKDF2 (16 bytes), aplicar PBKDF2 al hash legacy (lo usaremos como si fuese el “password” para no requerir la contraseña en texto claro) y almacenar el resultado en el nuevo formato.
+  3. Cuando el usuario edite la contraseña desde la UI o CLI, repetir PBKDF2 usando el password plano y sobrescribir el archivo de config.
+  4. Registrar en log un mensaje neutro “EC password migrated al nuevo formato” sin exponer hashes.
+- **Biblioteca**: Crypto++ ya está en el árbol; PBKDF2-HMAC-SHA256 se implementará con `PKCS5_PBKDF2_HMAC<SHA256>`.
+- **Handshake remoto**:
+  - `ExternalConn.cpp`: añade `EC_TAG_PBKDF2_PARAMS` con iteraciones y salt_hex a la respuesta de `EC_OP_AUTH_SALT`.
+  - `RemoteConnect.cpp` / `ExternalConnector.cpp`: si el paquete trae los parámetros, derivan `dk_hex` del password plano, lo guardan opcionalmente en memoria y siguen con el handshake. Si no, retrocompatibilidad total: seguir usando MD5 legacy.
+- **Persistencia**: `PrefsUnifiedDlg`, `ec-config`, `remote.conf` y `amuleweb.conf` deben escribir siempre el nuevo formato; sólo se usa el legacy para lectura + migración.
 
 ### Validación durante la fase
 - Tests específicos de path traversal y manipulación de rutas.
@@ -188,10 +232,13 @@
 - Tests de traversal/EC/UPnP pasando.
 
 ### Estado
-- Estado actual: `[ ] Pendiente`
+- Estado actual: `[~] En progreso`
 
 ### Notas / incidencias
-- Ninguna.
+- `NormalizeAbsolutePath` ya existe (`src/libs/common/Path.cpp/.h`) y `Preferences.cpp` lo usa para validar directorios configurables; falta propagarlo al resto de entradas de la fase.
+- 2026-03-26: `NormalizeSharedPath` se aplica en Prefs (Temp/Incoming/OS), categorías, el conversor de partes, wxCas y aLinkCreator; rutas no absolutas muestran error antes de guardarse.
+- 2026-03-26: los conectores EC/Web normalizan Temp/Incoming/Shared y descartan rutas inválidas, dejando registro neutro y manteniendo los valores previos.
+- 2026-03-27: Hardening de rutas integrado y publicado como **wMule 1.0.1**. Build `cmake --build . --config Debug`, `ctest -R PathTraversalTest -C Debug --output-on-failure` y smoke test manual (`wmule.exe` conecta a servidores, ejecuta búsquedas extendidas con filtros, descarga y comparte) antes de etiquetar el hito.
 
 ---
 
@@ -437,10 +484,10 @@
 
 ## Próximos Pasos Inmediatos
 
-1. Ejecutar **Fase 1** siguiendo la auditoría de seguridad: buffer overflows, opcodes, UPnP.
-2. Añadir tests para cada vulnerabilidad corregida.
-3. Publicar `wMule 1.1.0` con enfoque en seguridad/hardening.
-4. Planificar Fase 2 en paralelo con la creación de la suite de tests.
+1. Completar subbloques críticos de **Fase 2** (normalización de rutas externas, endurecimiento de EC y feedback visible de UPnP) aplicando `NormalizeAbsolutePath`/helpers similares en todos los puntos de entrada.
+2. Integrar `ClientUDPTest`, `KadHandlerFuzzTest`, `KadPacketGuardsTest`, `UPnPUrlUtilsTest` y `UPnPXmlSafetyTest` en `unittests/tests/CMakeLists.txt` para que `ctest` vuelva a reflejar la cobertura real.
+3. Reejecutar builds/tests completos en matrices `ENABLE_UPNP=OFF/ON` tras cada bloque para garantizar que los fixes de CMake/libupnp se mantienen.
+4. Actualizar `docs/BUILD_MEMORY.md` y este plan al cerrar cada hito parcial para dejar constancia de incidencias y validaciones.
 
 ---
 

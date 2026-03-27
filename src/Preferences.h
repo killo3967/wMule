@@ -352,6 +352,9 @@ public:
 	typedef std::vector<CPath> PathList;
 	PathList shareddir_list;
 
+	static PathList	SanitizeSharedDirectories(const PathList& rawList);
+	bool IsAllowedCategoryDir(const CPath& path) const;
+
 	wxArrayString adresses_list;
 
 	static bool		AutoConnectStaticOnly()		{ return s_autoconnectstaticonly; }

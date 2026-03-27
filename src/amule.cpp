@@ -45,6 +45,7 @@
 
 
 #include <common/Format.h>		// Needed for CFormat
+#include <common/SecretHash.h>
 #include "kademlia/kademlia/Kademlia.h"
 #include "kademlia/kademlia/Prefs.h"
 #include "kademlia/kademlia/UDPFirewallTester.h"
@@ -250,7 +251,7 @@ int CamuleApp::OnExit()
 	}
 
 	if (m_app_state!=APP_STATE_STARTING) {
-		AddLogLineNS(_("aMule OnExit: Terminating core."));
+		AddLogLineNS(_("wMule OnExit: Terminating core."));
 	}
 
 	delete serverlist;
@@ -323,11 +324,11 @@ int CamuleApp::OnExit()
 	wxSocketBase::Shutdown();	// needed because we also called Initialize() manually
 
 	if (m_app_state!=APP_STATE_STARTING) {
-		AddLogLineNS(_("aMule shutdown completed."));
+		AddLogLineNS(_("wMule shutdown completed."));
 	}
 
 #if wxUSE_MEMORY_TRACING
-	AddLogLineNS(_("Memory debug results for aMule exit:"));
+	AddLogLineNS(_("Memory debug results for wMule exit:"));
 	// Log mem debug messages to wxLogStderr
 	wxLog* oldLog = wxLog::SetActiveTarget(new wxLogStderr);
 	//AddLogLineNS(wxT("**************Classes**************");
@@ -440,7 +441,9 @@ bool CamuleApp::OnInit()
 	// Configure EC for amuled when invoked with ec-config
 	if (ec_config) {
 		AddLogLineNS(_("\nEC configuration"));
-		thePrefs::SetECPass(GetPassword(false).Encode());
+		CMD4Hash pw = GetPassword(false);
+		wxString secret = SecretHash::BuildPBKDF2FromMD5(pw.Encode());
+		thePrefs::SetECPass(secret);
 		thePrefs::EnableExternalConnections(true);
 		AddLogLineNS(_("Password set and external connections enabled."));
 	}
@@ -448,9 +451,9 @@ bool CamuleApp::OnInit()
 #ifndef __WINDOWS__
 	if (getuid() == 0) {
 		wxString msg =
-			wxT("Warning! You are running aMule as root.\n")
+			wxT("Warning! You are running wMule as root.\n")
 			wxT("Doing so is not recommended for security reasons,\n")
-			wxT("and you are advised to run aMule as an normal\n")
+			wxT("and you are advised to run wMule as an normal\n")
 			wxT("user instead.");
 
 		ShowAlert(msg, _("WARNING"), wxCENTRE | wxOK | wxICON_ERROR);
@@ -579,7 +582,7 @@ bool CamuleApp::OnInit()
 #ifndef AMULE_DAEMON
 		if (wxYES == wxMessageBox(
 			wxString(
-				_("You don't have any server in the server list.\nDo you want aMule to download a new list now?")),
+				_("You don't have any server in the server list.\nDo you want wMule to download a new list now?")),
 			wxString(_("Server list download")),
 			wxYES_NO,
 			static_cast<wxWindow*>(theApp->amuledlg)))
@@ -788,22 +791,22 @@ bool CamuleApp::ReinitializeNetwork(wxString* msg)
 				myaddr[0].Service(),
 				"TCP",
 				thePrefs::GetUPnPECEnabled(),
-				"aMule TCP External Connections Socket");
+				"wMule TCP External Connections Socket");
 			m_upnpMappings[1] = CUPnPPortMapping(
 				myaddr[1].Service(),
 				"UDP",
 				thePrefs::GetUPnPEnabled(),
-				"aMule UDP socket (TCP+3)");
+				"wMule UDP socket (TCP+3)");
 			m_upnpMappings[2] = CUPnPPortMapping(
 				myaddr[2].Service(),
 				"TCP",
 				thePrefs::GetUPnPEnabled(),
-				"aMule TCP Listen Socket");
+				"wMule TCP Listen Socket");
 			m_upnpMappings[3] = CUPnPPortMapping(
 				myaddr[3].Service(),
 				"UDP",
 				thePrefs::GetUPnPEnabled(),
-				"aMule UDP Extended eMule Socket");
+				"wMule UDP Extended eMule Socket");
 			m_upnp = new CUPnPControlPoint(thePrefs::GetUPnPTCPPort());
 
 			wxStopWatch count; // Wait UPnP service responses for 3s before add port mappings
@@ -853,7 +856,7 @@ void CamuleApp::OnlineSig(bool zero /* reset stats (used on shutdown) */)
 	}
 
 	if ( !amulesig_out.Create(m_amulesig_path) ) {
-		AddLogLineC(_("Failed to create aMule OnlineSig File"));
+		AddLogLineC(_("Failed to create wMule OnlineSig File"));
 		// Will never try again.
 		m_amulesig_path.Clear();
 		m_emulesig_path.Clear();
@@ -1000,13 +1003,11 @@ void CamuleApp::OnFatalException()
 	/* Print the backtrace */
 	wxString msg;
 	msg	<< wxT("\n--------------------------------------------------------------------------------\n")
-		<< wxT("A fatal error has occurred and aMule has crashed.\n")
-		<< wxT("Please assist us in fixing this problem by posting the backtrace below in our\n")
-		<< wxT("'aMule Crashes' forum and include as much information as possible regarding the\n")
-		<< wxT("circumstances of this crash. The forum is located here:\n")
-		<< wxT("    http://forum.amule.org/index.php?board=67.0\n")
-		<< wxT("If possible, please try to generate a real backtrace of this crash:\n")
-		<< wxT("    http://wiki.amule.org/wiki/Backtraces\n\n")
+		<< wxT("A fatal error has occurred and wMule has crashed.\n")
+		<< wxT("Please help us fix this problem by filing an issue on the wMule tracker:\n")
+		<< wxT("    https://github.com/wMule/wMule/issues\n")
+		<< wxT("Include as much information as possible regarding the\n")
+		<< wxT("circumstances of this crash and attach the backtrace below.\n\n")
 		<< wxT("----------------------------=| BACKTRACE FOLLOWS: |=----------------------------\n")
 		<< wxT("Current version is: ") << FullMuleVersion
 		<< wxT("\nRunning on: ") << OSDescription
@@ -1019,7 +1020,7 @@ void CamuleApp::OnFatalException()
 #endif
 
 
-// Sets the localization of aMule
+// Sets the localization of wMule
 void CamuleApp::Localize_mule()
 {
 	InitCustomLanguages();
@@ -1030,11 +1031,11 @@ void CamuleApp::Localize_mule()
 }
 
 
-// Displays information related to important changes in aMule.
-// Is called when the user runs a new version of aMule
+// Displays information related to important changes in wMule.
+// Is called when the user runs a new version of wMule
 void CamuleApp::Trigger_New_version(wxString new_version)
 {
-	wxString info = wxT(" --- ") + CFormat(_("This is the first time you run aMule %s")) % new_version + wxT(" ---\n\n");
+	wxString info = wxT(" --- ") + CFormat(_("This is the first time you run wMule %s")) % new_version + wxT(" ---\n\n");
 	if (new_version == wxT("SVN")) {
 		info += _("This version is a testing version, updated daily, and\n");
 		info += _("we give no warranty it won't break anything, burn your house,\n");
@@ -1043,10 +1044,10 @@ void CamuleApp::Trigger_New_version(wxString new_version)
 
 	// General info
 	info += wxT("\n");
-	info += _("More information, support and new releases can found at our homepage,\n");
-	info += _("at www.aMule.org, or in our IRC channel #aMule at irc.freenode.net.\n");
-	info += wxT("\n");
-	info += _("Feel free to report any bugs to http://forum.amule.org");
+	info += _("More information, support and new releases are available on the wMule project page:\n");
+	info += wxT("    https://github.com/wMule/wMule\n\n");
+	info += _("Please report any bugs or issues at:\n");
+	info += wxT("    https://github.com/wMule/wMule/issues");
 
 	ShowAlert(info, _("Info"), wxCENTRE | wxOK | wxICON_ERROR);
 }
@@ -1608,16 +1609,16 @@ void CamuleApp::CheckNewVersion(uint32 result)
 			long newVer = make_full_ed2k_version(fields[0], fields[1], fields[2]);
 
 			if (curVer < newVer) {
-				AddLogLineC(_("You are using an outdated version of aMule!"));
+				AddLogLineC(_("You are using an outdated version of wMule!"));
 				// cppcheck-suppress zerodiv
-				AddLogLineN(CFormat(_("Your aMule version is %i.%i.%i and the latest version is %li.%li.%li")) % VERSION_MJR % VERSION_MIN % VERSION_UPDATE % fields[0] % fields[1] % fields[2]);
-				AddLogLineN(_("The latest version can always be found at http://www.amule.org"));
+				AddLogLineN(CFormat(_("Your wMule version is %i.%i.%i and the latest version is %li.%li.%li")) % VERSION_MJR % VERSION_MIN % VERSION_UPDATE % fields[0] % fields[1] % fields[2]);
+				AddLogLineN(_("The latest version can always be found at https://github.com/wMule/wMule"));
 				#ifdef AMULE_DAEMON
-				AddLogLineCS(CFormat(_("WARNING: Your aMuled version is outdated: %i.%i.%i < %li.%li.%li"))
+				AddLogLineCS(CFormat(_("WARNING: Your wMuleD version is outdated: %i.%i.%i < %li.%li.%li"))
 					% VERSION_MJR % VERSION_MIN % VERSION_UPDATE % fields[0] % fields[1] % fields[2]);
 				#endif
 			} else {
-				AddLogLineN(_("Your copy of aMule is up to date."));
+				AddLogLineN(_("Your copy of wMule is up to date."));
 			}
 		}
 
@@ -1954,7 +1955,7 @@ void CamuleApp::UDPSocketHandler(wxSocketEvent& event)
 void CamuleApp::OnUnhandledException()
 {
 	// Call the generic exception-handler.
-	fprintf(stderr, "\taMule Version: %s\n", (const char*)unicode2char(GetFullMuleVersion()));
+	fprintf(stderr, "\twMule Version: %s\n", (const char*)unicode2char(GetFullMuleVersion()));
 	::OnUnhandledException();
 }
 
