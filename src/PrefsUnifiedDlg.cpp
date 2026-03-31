@@ -31,7 +31,13 @@
 #include <common/Path.h>
 
 #include <wx/colordlg.h>
+#include <wx/msgdlg.h>
+#include <wx/textdlg.h>
 #include <wx/tooltip.h>
+#include <wx/utils.h>
+#include <wx/datetime.h>
+
+#include <ctime>
 
 #include "amule.h"				// Needed for theApp
 #include "amuleDlg.h"
@@ -53,6 +59,72 @@
 #include "Statistics.h"
 #include "UserEvents.h"
 #include "PlatformSpecific.h"		// Needed for PLATFORMSPECIFIC_CAN_PREVENT_SLEEP_MODE
+
+namespace {
+
+wxString NormalizeECActivationReason(wxString reason)
+{
+	reason.Replace(wxT("\r"), wxEmptyString);
+	reason.Replace(wxT("\n"), wxT(" "));
+	reason.Trim(true).Trim(false);
+	if (reason.IsEmpty()) {
+		reason = _( "(no reason provided)" );
+	}
+	return reason;
+}
+
+bool ConfirmManualECActivation(wxWindow* parent, wxString* outReason)
+{
+	wxString message = _(
+		"Enabling External Connections exposes the remote control interface to your network.\n\n"
+		"Are you sure you want to enable it?"
+	);
+	int result = theApp->ShowAlert(message, _("External Connections"), wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+	if (result != wxYES) {
+		return false;
+	}
+
+	wxTextEntryDialog reasonDialog(
+		parent,
+		_("Describe why you are enabling External Connections (this note will be logged):"),
+		_("External Connections"),
+		wxEmptyString,
+		wxTextEntryDialogStyle
+	);
+	if (reasonDialog.ShowModal() != wxID_OK) {
+		return false;
+	}
+
+	*outReason = NormalizeECActivationReason(reasonDialog.GetValue());
+	return true;
+}
+
+bool FormatUTCTimestamp(sint64 timestampSeconds, wxString& outFormatted)
+{
+#ifdef _WIN32
+	__time64_t secondsValue = static_cast<__time64_t>(timestampSeconds);
+	struct tm utcTm = {};
+	if (_gmtime64_s(&utcTm, &secondsValue) != 0) {
+		return false;
+	}
+#else
+	time_t secondsValue = static_cast<time_t>(timestampSeconds);
+	struct tm utcTm = {};
+	if (!gmtime_r(&secondsValue, &utcTm)) {
+		return false;
+	}
+#endif
+	outFormatted = wxString::Format(wxT("%04d-%02d-%02d %02d:%02d:%02d"),
+		utcTm.tm_year + 1900,
+		utcTm.tm_mon + 1,
+		utcTm.tm_mday,
+		utcTm.tm_hour,
+		utcTm.tm_min,
+		utcTm.tm_sec);
+	return true;
+}
+
+}
 
 BEGIN_EVENT_TABLE(PrefsUnifiedDlg,wxDialog)
 	// Events
@@ -105,6 +177,8 @@ BEGIN_EVENT_TABLE(PrefsUnifiedDlg,wxDialog)
 	EVT_BUTTON(IDC_SELINCDIR,		PrefsUnifiedDlg::OnButtonDir)
 	EVT_BUTTON(IDC_SELOSDIR,		PrefsUnifiedDlg::OnButtonDir)
 	EVT_BUTTON(IDC_SELBROWSER,		PrefsUnifiedDlg::OnButtonBrowseApplication)
+	EVT_BUTTON(IDC_UPNP_RETRY_CORE,	PrefsUnifiedDlg::OnUPnPManualRetry)
+	EVT_BUTTON(IDC_UPNP_RETRY_WEB,	PrefsUnifiedDlg::OnUPnPManualRetry)
 
 	EVT_SPINCTRL(IDC_TOOLTIPDELAY,		PrefsUnifiedDlg::OnToolTipDelayChange)
 
@@ -498,7 +572,7 @@ bool PrefsUnifiedDlg::TransferToWindow()
 	FindWindow(IDC_UPNP_ENABLED)->Enable(false);
 	FindWindow(IDC_UPNPTCPPORT)->Enable(false);
 	FindWindow(IDC_UPNPTCPPORTTEXT)->Enable(false);
-	thePrefs::SetUPnPEnabled(false);
+	// thePrefs::SetUPnPEnabled(false);
 	FindWindow(IDC_UPNP_WEBSERVER_ENABLED)->Enable(false);
 	FindWindow(IDC_WEBUPNPTCPPORT)->Enable(false);
 	FindWindow(IDC_WEBUPNPTCPPORTTEXT)->Enable(false);
@@ -589,7 +663,63 @@ bool PrefsUnifiedDlg::CfgChanged(int ID)
 
 void PrefsUnifiedDlg::OnOk(wxCommandEvent& WXUNUSED(event))
 {
+	const bool previouslyAcceptingEC = thePrefs::AcceptExternalConnections();
+	bool ecActivationConfirmed = false;
+	wxString ecActivationReason;
+	wxCheckBox* acceptECCheckBox = CastChild(IDC_EXT_CONN_ACCEPT, wxCheckBox);
+	const bool requestedECActivation = acceptECCheckBox ? acceptECCheckBox->GetValue() : previouslyAcceptingEC;
+	const bool wasUPnPEnabled = thePrefs::GetUPnPEnabled();
+	const bool wasUPnPWebEnabled = thePrefs::GetUPnPWebServerEnabled();
+
+	if (!previouslyAcceptingEC && requestedECActivation) {
+		if (!ConfirmManualECActivation(this, &ecActivationReason)) {
+			if (acceptECCheckBox) {
+				acceptECCheckBox->SetValue(false);
+			}
+			thePrefs::EnableExternalConnections(false);
+			theApp->ShowAlert(_("External connections remain disabled because the manual activation was cancelled."), _("External Connections"), wxOK | wxICON_INFORMATION);
+		} else {
+			ecActivationConfirmed = true;
+		}
+	}
+
 	TransferFromWindow();
+
+#ifdef ENABLE_UPNP
+	const int64 disabledTimestampUtc = wxGetUTCTimeMillis().GetValue();
+
+	if (wasUPnPEnabled && !thePrefs::GetUPnPEnabled()) {
+		CUPnPLastResult disabled = thePrefs::GetLastUPnPResultCore();
+		disabled.scope = wxT("core");
+		disabled.status = UPNP_LAST_DISABLED;
+		disabled.timestampUtc = disabledTimestampUtc;
+		disabled.routerId.clear();
+		disabled.routerName.clear();
+		disabled.adapterId.clear();
+		disabled.requested.clear();
+		disabled.mapped.clear();
+		disabled.retryCount = 0;
+		disabled.lastError.clear();
+		disabled.suppressedUntilSessionEnd = false;
+		thePrefs::SetLastUPnPResultCore(disabled);
+	}
+
+	if (wasUPnPWebEnabled && !thePrefs::GetUPnPWebServerEnabled()) {
+		CUPnPLastResult disabled = thePrefs::GetLastUPnPResultWeb();
+		disabled.scope = wxT("webserver");
+		disabled.status = UPNP_LAST_DISABLED;
+		disabled.timestampUtc = disabledTimestampUtc;
+		disabled.routerId.clear();
+		disabled.routerName.clear();
+		disabled.adapterId.clear();
+		disabled.requested.clear();
+		disabled.mapped.clear();
+		disabled.retryCount = 0;
+		disabled.lastError.clear();
+		disabled.suppressedUntilSessionEnd = false;
+		thePrefs::SetLastUPnPResultWeb(disabled);
+	}
+#endif
 
 	bool restart_needed = false;
 	wxString restart_needed_msg = _("wMule must be restarted to enable these changes:\n\n");
@@ -632,6 +762,16 @@ void PrefsUnifiedDlg::OnOk(wxCommandEvent& WXUNUSED(event))
 		thePrefs::UnsetAutoServerStart();
 		wxMessageBox(_("Your Auto-update server list is empty.\n'Auto-update server list at startup' will be disabled."),
 			_("Message"), wxOK | wxICON_INFORMATION, this);
+	}
+
+	if (!previouslyAcceptingEC && thePrefs::AcceptExternalConnections()) {
+		if (!ecActivationConfirmed) {
+			ecActivationReason = NormalizeECActivationReason(wxEmptyString);
+		}
+		AddLogLineCS(CFormat(_("External connections manually enabled from %s by '%s'. Reason: %s"))
+			% _("Preferences dialog")
+			% wxGetUserId()
+			% ecActivationReason);
 	}
 
 	if (thePrefs::AcceptExternalConnections() && thePrefs::ECPassword().IsEmpty()) {
@@ -795,6 +935,117 @@ void PrefsUnifiedDlg::OnCancel(wxCommandEvent& WXUNUSED(event))
 }
 
 
+wxString PrefsUnifiedDlg::BuildUPnPStatusLabel(const CUPnPLastResult& result, bool enabled) const
+{
+	if (!enabled) {
+		return wxT("UPnP disabled");
+	}
+	if (result.status == UPNP_LAST_UNKNOWN && result.timestampUtc == 0) {
+		return wxT("No UPnP result recorded yet.");
+	}
+
+	wxString status;
+	switch (result.status) {
+	case UPNP_LAST_OK:
+		status = wxT("ok");
+		break;
+	case UPNP_LAST_FAIL:
+		status = wxT("fail");
+		break;
+	case UPNP_LAST_DISABLED:
+		status = wxT("disabled");
+		break;
+	case UPNP_LAST_SUPPRESSED:
+		status = wxT("suppressed");
+		break;
+	case UPNP_LAST_UNKNOWN:
+	default:
+		status = wxT("unknown");
+		break;
+	}
+
+	wxString router = result.routerName.IsEmpty() ? result.routerId : result.routerName;
+	if (router.IsEmpty()) {
+		router = wxT("unknown");
+	}
+	wxString adapter = result.adapterId.IsEmpty() ? wxString(wxT("unknown")) : result.adapterId;
+	wxString timestamp = wxT("unknown time");
+	if (result.timestampUtc > 0) {
+	const sint64 timestampSeconds = static_cast<sint64>(result.timestampUtc / 1000);
+	const sint64 maxSupportedSeconds = static_cast<sint64>(0x7FFFFFFF);
+	const wxString scopeLabel = result.scope.IsEmpty() ? wxString(wxT("unknown")) : result.scope;
+	AddDebugLogLineC(logUPnP, CFormat(wxT("UPnP UI: scope=%s timestampUtc=%lld ms (%lld s) enabled=%d"))
+		% scopeLabel % static_cast<wxLongLong_t>(result.timestampUtc) % static_cast<wxLongLong_t>(timestampSeconds) % static_cast<int>(enabled));
+	if (timestampSeconds >= 0 && timestampSeconds <= maxSupportedSeconds) {
+		if (!FormatUTCTimestamp(timestampSeconds, timestamp)) {
+			AddDebugLogLineC(logUPnP, CFormat(wxT("UPnP UI: gmtime failed for timestamp %lld ms (scope=%s)"))
+				% static_cast<wxLongLong_t>(result.timestampUtc) % scopeLabel);
+		}
+		} else {
+			AddDebugLogLineC(logUPnP, CFormat(wxT("UPnP UI: descartando timestamp fuera de rango (%lld ms, scope=%s)"))
+				% static_cast<wxLongLong_t>(result.timestampUtc) % scopeLabel);
+		}
+	}
+
+	wxString label = wxString::Format(
+		wxT("State: %s | Last: %s | Router: %s | Adapter: %s | Ports: %zu mapped of %zu | Retries: %u"),
+		status,
+		timestamp,
+		router,
+		adapter,
+		result.mapped.size(),
+		result.requested.size(),
+		result.retryCount);
+
+	if (result.status == UPNP_LAST_SUPPRESSED && result.suppressedUntilSessionEnd) {
+		label << wxT(" | Suppressed until restart");
+	}
+	if (!result.lastError.IsEmpty()) {
+		label << wxT(" | Error: ") << result.lastError;
+	}
+
+	return label;
+}
+
+
+void PrefsUnifiedDlg::UpdateUPnPStatusUI()
+{
+	if (wxStaticText* core = CastChild(IDC_UPNP_STATUS_CORE, wxStaticText)) {
+		core->SetLabel(BuildUPnPStatusLabel(thePrefs::GetLastUPnPResultCore(), thePrefs::GetUPnPEnabled()));
+	}
+	if (wxStaticText* web = CastChild(IDC_UPNP_STATUS_WEB, wxStaticText)) {
+		web->SetLabel(BuildUPnPStatusLabel(thePrefs::GetLastUPnPResultWeb(), thePrefs::GetUPnPWebServerEnabled()));
+	}
+
+	if (wxWindow* retryCore = FindWindow(IDC_UPNP_RETRY_CORE)) {
+		retryCore->Enable(thePrefs::GetUPnPEnabled());
+	}
+	if (wxWindow* retryWeb = FindWindow(IDC_UPNP_RETRY_WEB)) {
+		retryWeb->Enable(thePrefs::GetUPnPWebServerEnabled());
+	}
+}
+
+
+void PrefsUnifiedDlg::OnUPnPManualRetry(wxCommandEvent& event)
+{
+	const int id = event.GetId();
+	const wxString scope = (id == IDC_UPNP_RETRY_WEB) ? wxT("webserver") : wxT("core");
+
+	thePrefs::ClearUPnPSuppression(scope);
+
+	if (scope == wxT("core")) {
+		if (!theApp->RetryCoreUPnP(true)) {
+			AddLogLineCS(wxT("UPnP retry failed, revisá los logs para más detalles."));
+		}
+	} else {
+		thePrefs::RequestUPnPForceRetry(scope);
+		AddLogLineCS(wxT("UPnP retry for the web server will run on the next web server restart and will ignore the suppression window."));
+	}
+
+	UpdateUPnPStatusUI();
+}
+
+
 void PrefsUnifiedDlg::OnCheckBoxChange(wxCommandEvent& event)
 {
 	bool	value = event.IsChecked();
@@ -818,11 +1069,13 @@ void PrefsUnifiedDlg::OnCheckBoxChange(wxCommandEvent& event)
 		case IDC_UPNP_ENABLED:
 			FindWindow(IDC_UPNPTCPPORT)->Enable(value);
 			FindWindow(IDC_UPNPTCPPORTTEXT)->Enable(value);
+			UpdateUPnPStatusUI();
 			break;
 
 		case IDC_UPNP_WEBSERVER_ENABLED:
 			FindWindow(IDC_WEBUPNPTCPPORT)->Enable(value);
 			FindWindow(IDC_WEBUPNPTCPPORTTEXT)->Enable(value);
+			UpdateUPnPStatusUI();
 			break;
 
 		case IDC_NETWORKKAD: {
@@ -1134,6 +1387,7 @@ void PrefsUnifiedDlg::OnToolTipDelayChange(wxSpinEvent& event)
 void PrefsUnifiedDlg::OnInitDialog( wxInitDialogEvent& WXUNUSED(evt) )
 {
 // This function exists solely to avoid automatic transfer-to-widget calls
+	UpdateUPnPStatusUI();
 }
 
 

@@ -1631,13 +1631,22 @@ wxSizer *PreferencesConnectionTab( wxWindow *parent, bool call_fit, bool set_siz
 
     item15->Add( 20, 20, 0, wxALIGN_CENTER|wxALL, 5 );
 
-    wxStaticText *item23 = new wxStaticText( parent, IDC_UPNPTCPPORTTEXT, _("UPnP TCP Port (Optional):"), wxDefaultPosition, wxDefaultSize, 0 );
-    item15->Add( item23, 0, wxALIGN_CENTER_VERTICAL|wxLEFT, 20 );
+	wxStaticText *item23 = new wxStaticText( parent, IDC_UPNPTCPPORTTEXT, _("UPnP TCP Port (Optional):"), wxDefaultPosition, wxDefaultSize, 0 );
+	item15->Add( item23, 0, wxALIGN_CENTER_VERTICAL|wxLEFT, 20 );
 
-    wxSpinCtrl *item24 = new wxSpinCtrl( parent, IDC_UPNPTCPPORT, wxT("50000"), wxDefaultPosition, wxSize(100,-1), 0, 0, 65535, 50000 );
-    item15->Add( item24, 0, wxALIGN_CENTER, 5 );
+	wxSpinCtrl *item24 = new wxSpinCtrl( parent, IDC_UPNPTCPPORT, wxT("50000"), wxDefaultPosition, wxSize(100,-1), 0, 0, 65535, 50000 );
+	item15->Add( item24, 0, wxALIGN_CENTER, 5 );
 
-    item13->Add( item15, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxALL, 0 );
+	item13->Add( item15, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxALL, 0 );
+
+	wxBoxSizer *item15Status = new wxBoxSizer( wxHORIZONTAL );
+	wxStaticText *item24Status = new wxStaticText( parent, IDC_UPNP_STATUS_CORE, _("UPnP status: pending"), wxDefaultPosition, wxDefaultSize, 0 );
+	item15Status->Add( item24Status, 1, wxALIGN_CENTER_VERTICAL|wxLEFT|wxRIGHT, 20 );
+
+	wxButton *item24Retry = new wxButton( parent, IDC_UPNP_RETRY_CORE, _("Force UPnP retry"), wxDefaultPosition, wxDefaultSize, 0 );
+	item15Status->Add( item24Retry, 0, wxALIGN_LEFT|wxRIGHT, 5 );
+
+	item13->Add( item15Status, 0, wxGROW|wxTOP|wxBOTTOM, 5 );
 
     item0->Add( item13, 0, wxGROW|wxALIGN_CENTER_VERTICAL, 0 );
 
@@ -2274,14 +2283,20 @@ wxSizer *PreferencesRemoteControlsTab( wxWindow *parent, bool call_fit, bool set
     wxStaticText *item30 = new wxStaticText( parent, IDC_WEBUPNPTCPPORTTEXT, _("Web server UPnP TCP port (Optional)"), wxDefaultPosition, wxDefaultSize, 0 );
     item29->Add( item30, 1, wxALIGN_CENTER|wxRIGHT, 5 );
 
-    wxSpinCtrl *item31 = new wxSpinCtrl( parent, IDC_WEBUPNPTCPPORT, wxT("10000"), wxDefaultPosition, wxSize(100,-1), 0, 1025, 65535, 10000 );
-    item29->Add( item31, 0, wxALIGN_CENTER, 5 );
+	wxSpinCtrl *item31 = new wxSpinCtrl( parent, IDC_WEBUPNPTCPPORT, wxT("10000"), wxDefaultPosition, wxSize(100,-1), 0, 1025, 65535, 10000 );
+	item29->Add( item31, 0, wxALIGN_CENTER, 5 );
 
-    item14->Add( item29, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxLEFT, 20 );
+	item14->Add( item29, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxLEFT, 20 );
 
-    wxBoxSizer *item32 = new wxBoxSizer( wxHORIZONTAL );
+	wxStaticText *item31Status = new wxStaticText( parent, IDC_UPNP_STATUS_WEB, _("UPnP status: pending"), wxDefaultPosition, wxDefaultSize, 0 );
+	item14->Add( item31Status, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxLEFT, 20 );
 
-    wxStaticText *item33 = new wxStaticText( parent, -1, _("Page Refresh Time (in secs)"), wxDefaultPosition, wxDefaultSize, 0 );
+	wxButton *item31Retry = new wxButton( parent, IDC_UPNP_RETRY_WEB, _("Force UPnP retry"), wxDefaultPosition, wxDefaultSize, 0 );
+	item14->Add( item31Retry, 0, wxALIGN_LEFT|wxLEFT, 20 );
+
+	wxBoxSizer *item32 = new wxBoxSizer( wxHORIZONTAL );
+
+	wxStaticText *item33 = new wxStaticText( parent, -1, _("Page Refresh Time (in secs)"), wxDefaultPosition, wxDefaultSize, 0 );
     item32->Add( item33, 1, wxALIGN_CENTER, 5 );
 
     wxSpinCtrl *item34 = new wxSpinCtrl( parent, IDC_WEB_REFRESH_TIMEOUT, wxT("120"), wxDefaultPosition, wxSize(100,-1), 0, 120, 600, 120 );
