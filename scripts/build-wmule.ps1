@@ -53,12 +53,17 @@ $VcpkgToolchain = "C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
 # Requiere la instalación previa de miniupnpc vía vcpkg.
 $EnableUpnp = $true   # Cambiar a $false solo si se desea desactivarlo explícitamente
 
+# Habilita la internacionalización gettext. Si se desactiva, el selector de idioma
+# sigue visible pero los catálogos no se cargan en runtime.
+$EnableNls = $true
+
 # Flag para decidir si se construyen los tests MuleUnit; ON garantiza que `ctest`
 # tenga todos los binarios disponibles
 $BuildTesting = $true
 
 # Valores que CMake entiende para las opciones booleanas
 $EnableUpnpValue   = if ($EnableUpnp) { "ON" } else { "OFF" }
+$EnableNlsValue    = if ($EnableNls) { "ON" } else { "OFF" }
 $BuildTestingValue = if ($BuildTesting) { "ON" } else { "OFF" }
 
 # Generador de CMake a utilizar
@@ -134,6 +139,7 @@ function Run-CmakeConfiguration {
             "-DCMAKE_BUILD_TYPE=$BuildType"         # Tipo de build (Debug/Release)
             "-DCMAKE_TOOLCHAIN_FILE=$VcpkgToolchain" # Toolchain de vcpkg para dependencias
             "-DENABLE_UPNP=$EnableUpnpValue"        # Habilitar UPnP (ON/OFF)
+            "-DENABLE_NLS=$EnableNlsValue"          # Habilitar i18n/gettext (ON/OFF)
             "-DBUILD_MONOLITHIC=ON"                 # Construir wmule.exe (GUI principal)
             "-DBUILD_AMULECMD=ON"                   # Construir wmulecmd.exe (interfaz CLI)
             "-DBUILD_TESTING=$BuildTestingValue"    # Construir pruebas unitarias
@@ -194,6 +200,20 @@ function Run-Build {
         }
         if (Test-Path $wmulecmdExe) {
             Write-Host "[INFO] Ejecutable CLI generado: $wmulecmdExe" -ForegroundColor Yellow
+        }
+
+        $translationScript = Join-Path $scriptDir "update-translations.ps1"
+        if (Test-Path $translationScript) {
+            try {
+                Write-Host "[INFO] Actualizando catálogos de idioma (.mo)" -ForegroundColor Cyan
+                & $translationScript -ProjectRoot $ProjectRoot -BuildDir $BuildDir -Configs @($BuildType) -CopyToBuild
+                if ($LASTEXITCODE -ne 0) {
+                    throw "update-translations.ps1 devolvió $LASTEXITCODE"
+                }
+            }
+            catch {
+                Write-Warning "No se pudieron sincronizar las traducciones: $($_.Exception.Message)"
+            }
         }
     }
     finally {

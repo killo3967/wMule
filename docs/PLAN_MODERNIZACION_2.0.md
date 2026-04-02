@@ -42,7 +42,7 @@
 |------|----------|--------------------|
 | 0 | Baseline verificable *(ver anexo de fases completadas)* | Build & tests reproducibles, documentación alineada |
 | 1 | Seguridad crítica *(ver anexo de fases completadas)* | Parsing de red endurecido, defaults seguros |
-| 2 | Rutas y configuración | Sanitización de archivos y EC endurecido |
+| 2 | Rutas y configuración *(ver anexo de fases completadas)* | Sanitización de archivos y EC endurecido |
 | 3 | Robustez x64 | Sin truncaciones ni desbordes dependientes de plataforma |
 | 4 | Concurrencia segura | Threading estable, ownership claro |
 | 5 | Async incremental | Migración controlada a AsyncSocket con métricas |
@@ -52,48 +52,26 @@
 
 ---
 
-> **Nota**: Las fases completadas (Fase 0 y Fase 1) se trasladaron a `docs/PLAN_MODERNIZACION_COMPLETADO.md` para mantener este documento enfocado en el trabajo activo.
+> **Nota**: Las fases completadas (Fase 0, Fase 1 y Fase 2) se trasladaron a `docs/PLAN_MODERNIZACION_COMPLETADO.md` para mantener este documento enfocado en el trabajo activo.
 
-## Fase 2 – Rutas, Archivos y Configuración Remota
+## Fase 2 – Rutas, Archivos y Configuración Remota *(completada)*
 
-**Objetivo**: Eliminar path traversal, endurecer EC y ofrecer UPnP seguro con feedback claro.
+**Estado**: `[x] Completada (2026-04-02)`
 
-> Las secciones completadas viven en `docs/PLAN_MODERNIZACION_COMPLETADO.md`. Aquí sólo se muestran pendientes.
+**Resumen**: Se cerró el hardening de paths internos/externos y ahora los directorios Incoming/Temp/OS pueden configurarse fuera del `ConfigDir` siempre que superen la normalización (`NormalizeAbsolutePath`, `NormalizeSharedPath`, `NormalizeInternalDir`). Las rutas provenientes de GUI, CLI, EC y tooling legacy pasan por los mismos guards y generan mensajes consistentes cuando se rechazan. La UX documenta las restricciones y explica por qué se produce cada fallback. EC conserva el almacenamiento PBKDF2 y los conectores Web/CLI migran secretos legacy; UPnP se mantiene operativo con `wmule_upnp_sdk` (miniupnpc) y feedback visible en la UI.
 
-### Tareas
-#### 2.1 Path Traversal & FS Safety
-- [ ] Permitir que las rutas Incoming/Temp/OS puedan configurarse fuera de `ConfigDir` sin forzar fallback, aplicando la misma normalización y controles de seguridad.
-- [ ] Propagar `NormalizeSharedPath`/`NormalizeInternalDir` a los puntos de entrada que siguen aceptando rutas personalizadas (integraciones externas, tooling legacy), asegurando registros consistentes de rechazo/fallback.
-- [ ] Revisar la UX (GUI/CLI/EC) para documentar los límites de directorios permitidos y los motivos de rechazo.
+**Validaciones obligatorias ejecutadas (02/04/2026)**
+- [x] `cmake --build . --config Debug` (matriz ENABLE_UPNP=ON con pruebas MuleUnit nuevas)
+- [x] `ctest --output-on-failure -C Debug` (incluyendo suites de traversal, EC y UPnP)
+- [x] Verificación básica de `wmule.exe`
+- [x] Verificación básica de `wmulecmd.exe`
+- [x] Documentación actualizada (`PLAN_MODERNIZACION_2.0.md`, `PLAN_MODERNIZACION_COMPLETADO.md`, `BUILD_MEMORY.md`)
 
-#### 2.2 Configuración EC / Remota
-> Bloque completado. Mantener vigilancia y actualizar el anexo si surgen nuevas necesidades.
+Detalle completo del trabajo y de las incidencias resueltas en `docs/PLAN_MODERNIZACION_COMPLETADO.md`.
 
-#### 2.3 UPnP/Servicios externos
-> Bloque completado. Solo se reabrirá si aparecen incidencias o dependencias nuevas.
+### Deuda técnica derivada
 
-### Validación durante la fase
-- Tests específicos de path traversal y manipulación de rutas.
-- Ejecución de flujos EC/UPnP tras cambios.
-
-### Validación obligatoria al cierre
-- [ ] `cmake --build . --config Debug`
-- [ ] `ctest --output-on-failure -C Debug`
-- [ ] Verificación básica de `wmule.exe`
-- [ ] Verificación básica de `wmulecmd.exe`
-- [ ] Actualizar estado/documentación
-
-### Exit criteria
-- Rutas normalizadas en todas las entradas externas.
-- EC seguro por defecto con secretos protegidos.
-- Tests de traversal/EC/UPnP pasando.
-
-### Estado
-- Estado actual: `[~] En progreso`
-
-### Notas / incidencias
-- `NormalizeAbsolutePath` ya existe (`src/libs/common/Path.cpp/.h`) y `Preferences.cpp` lo usa para validar directorios configurables; falta propagarlo al resto de entradas de la fase.
-- [ ] Deuda abierta: permitir que las rutas Incoming/Temp/OS puedan configurarse fuera de `ConfigDir` sin forzar fallback, aplicando normalización equivalente y controles de seguridad.
+- [ ] Auditoría de cobertura i18n en la GUI: tras habilitar `ENABLE_NLS` y regenerar catálogos, quedan textos visibles en inglés (toolbar principal, etiquetas de preferencias heredadas, mensajes legacy). Necesita un barrido de recursos `muuli_wdr.cpp` + `.po`/`.mo` para alinear `msgid`/`msgstr` y actualizar traducciones faltantes.
 
 ---
 

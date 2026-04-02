@@ -1093,6 +1093,44 @@ void InitCustomLanguages()
 }
 
 
+namespace {
+	const wxChar* const PRIMARY_LOCALE_DOMAIN = wxT("wmule");
+	const wxChar* const LEGACY_LOCALE_DOMAIN = wxT("amule");
+
+	void LogLocaleLoadAttempt(const wxString& domain, bool fallback, bool loaded)
+	{
+		if (loaded) {
+			if (fallback) {
+				AddDebugLogLineN(logGeneral, CFormat(wxT("[i18n] Loaded locale catalog '%s' (fallback)")) % domain);
+			} else {
+				AddDebugLogLineN(logGeneral, CFormat(wxT("[i18n] Loaded locale catalog '%s'")) % domain);
+			}
+		} else if (!fallback) {
+			AddDebugLogLineN(logGeneral, CFormat(wxT("[i18n] Locale catalog '%s' not found, trying legacy domain")) % domain);
+		}
+	}
+
+	void EnsureLocaleCatalog(wxLocale& locale)
+	{
+		bool loaded = locale.AddCatalog(PRIMARY_LOCALE_DOMAIN);
+		LogLocaleLoadAttempt(PRIMARY_LOCALE_DOMAIN, false, loaded);
+		if (loaded) {
+			return;
+		}
+
+		if (wxStrcmp(PRIMARY_LOCALE_DOMAIN, LEGACY_LOCALE_DOMAIN) != 0) {
+			loaded = locale.AddCatalog(LEGACY_LOCALE_DOMAIN);
+			LogLocaleLoadAttempt(LEGACY_LOCALE_DOMAIN, true, loaded);
+		}
+
+		if (!loaded) {
+			AddLogLineCS(CFormat(wxT("[i18n] Unable to load translation catalog (looked for '%s' and '%s')."))
+				% PRIMARY_LOCALE_DOMAIN % LEGACY_LOCALE_DOMAIN);
+		}
+	}
+}
+
+
 void InitLocale(wxLocale& locale, int language)
 {
 	if (language == wxLANGUAGE_UNKNOWN) {
@@ -1109,7 +1147,7 @@ void InitLocale(wxLocale& locale, int language)
 	locale.AddCatalogLookupPathPrefix(wxFileName::GetCwd());
 #endif /* (!)(defined(__WXMAC__) || defined(__WINDOWS__)) */
 
-	locale.AddCatalog(wxT("amule"));
+	EnsureLocaleCatalog(locale);
 }
 
 

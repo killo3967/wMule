@@ -846,8 +846,14 @@ public:
 			}
 			int id = aMuleLanguages[i].id;
 
-			// save language selection
-			thePrefs::SetLanguageID(wxLang2Str(id));
+			// save language selection using canonical name when available
+			wxString langToken = wxLang2Str(id);
+			if (const wxLanguageInfo* info = wxLocale::GetLanguageInfo(id)) {
+				if (!info->CanonicalName.IsEmpty()) {
+					langToken = info->CanonicalName;
+				}
+			}
+			thePrefs::SetLanguageID(langToken);
 
 			return true;
 		}
@@ -894,7 +900,20 @@ public:
 					wxLogNull	logTarget;
 					wxLocale	locale_to_check;
 					InitLocale(locale_to_check, aMuleLanguages[i].id);
-					if (locale_to_check.IsOk() && locale_to_check.IsLoaded(wxT("amule"))) {
+					bool catalogLoaded = locale_to_check.IsOk() &&
+						(locale_to_check.IsLoaded(wxT("wmule")) || locale_to_check.IsLoaded(wxT("amule")));
+					if (!catalogLoaded) {
+						const wxLanguageInfo* langInfo = wxLocale::GetLanguageInfo(aMuleLanguages[i].id);
+						if (langInfo && !langInfo->CanonicalName.IsEmpty()) {
+							const wxString exeDir = wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath();
+							const wxString langDir = JoinPaths(JoinPaths(exeDir, wxT("locale")), langInfo->CanonicalName);
+							const wxString lcMessages = JoinPaths(langDir, wxT("LC_MESSAGES"));
+							const wxString primaryMo = JoinPaths(lcMessages, wxT("wmule.mo"));
+							const wxString legacyMo = JoinPaths(lcMessages, wxT("amule.mo"));
+							catalogLoaded = wxFileExists(primaryMo) || wxFileExists(legacyMo);
+						}
+					}
+					if (catalogLoaded) {
 						aMuleLanguages[i].displayname = wxString(wxGetTranslation(aMuleLanguages[i].name)) + wxT(" [") + aMuleLanguages[i].name + wxT("]");
 						aMuleLanguages[i].available = true;
 #if 0

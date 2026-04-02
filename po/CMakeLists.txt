@@ -61,8 +61,13 @@ foreach (PO_FILE ${PO_FILES})
 	if (TRANSLATION_${PO_FILE})
 		list (APPEND PO_BUILD ${PO_FILE}.po)
 
+		set (_wmule_locale_dir ${CMAKE_INSTALL_LOCALEDIR}/${PO_FILE}/LC_MESSAGES/)
 		install (FILES ${CMAKE_CURRENT_BINARY_DIR}/${PO_FILE}.gmo
-			DESTINATION ${CMAKE_INSTALL_LOCALEDIR}/${PO_FILE}/LC_MESSAGES/
+			DESTINATION ${_wmule_locale_dir}
+			RENAME wmule.mo
+		)
+		install (FILES ${CMAKE_CURRENT_BINARY_DIR}/${PO_FILE}.gmo
+			DESTINATION ${_wmule_locale_dir}
 			RENAME amule.mo
 		)
 	endif()

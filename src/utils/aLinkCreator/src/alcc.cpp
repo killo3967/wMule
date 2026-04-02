@@ -32,6 +32,28 @@
 #include "alcc.h"
 #include "ed2khash.h"
 
+namespace {
+	bool LoadAlccCatalog(wxLocale& locale)
+	{
+		const wxChar* const primary = wxT("wmule");
+		const wxChar* const legacy = wxT("amule");
+
+		if (locale.AddCatalog(primary)) {
+			wxLogDebug(wxT("[i18n] Loaded locale catalog '%s'"), primary);
+			return true;
+		}
+
+		wxLogDebug(wxT("[i18n] Locale catalog '%s' not found, trying legacy domain"), primary);
+		if (wxStrcmp(primary, legacy) != 0 && locale.AddCatalog(legacy)) {
+			wxLogDebug(wxT("[i18n] Loaded locale catalog '%s' (fallback)"), legacy);
+			return true;
+		}
+
+		wxLogWarning(wxT("[i18n] Unable to load translation catalog for alcc."));
+		return false;
+	}
+}
+
 // Application implementation
 IMPLEMENT_APP (alcc)
 
@@ -40,7 +62,7 @@ int alcc::OnRun ()
 {
   // Used to tell alcc to use aMule catalog
   m_locale.Init();
-  m_locale.AddCatalog(wxT("amule"));
+  LoadAlccCatalog(m_locale);
 
   wxLog::DontCreateOnDemand();
   wxLogStderr * stderrLog = new wxLogStderr;

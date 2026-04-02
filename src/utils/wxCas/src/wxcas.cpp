@@ -32,6 +32,7 @@
 
 #include <wx/config.h>
 #include <wx/image.h>
+#include <wx/log.h>
 
 #include "wxcas.h"
 
@@ -42,12 +43,34 @@
 // Application implementation
 IMPLEMENT_APP ( WxCas )
 
-bool
+namespace {
+	bool LoadWxCasCatalog(wxLocale& locale)
+	{
+		const wxChar* const primary = wxT("wmule");
+		const wxChar* const legacy = wxT("amule");
+
+		if (locale.AddCatalog(primary)) {
+			wxLogDebug(wxT("[i18n] Loaded locale catalog '%s'"), primary);
+			return true;
+		}
+
+		wxLogDebug(wxT("[i18n] Locale catalog '%s' not found, trying legacy domain"), primary);
+		if (wxStrcmp(primary, legacy) != 0 && locale.AddCatalog(legacy)) {
+			wxLogDebug(wxT("[i18n] Loaded locale catalog '%s' (fallback)"), legacy);
+			return true;
+		}
+
+		wxLogWarning(wxT("[i18n] Unable to load translation catalog for wxCas."));
+		return false;
+	}
+}
+
+
 WxCas::OnInit ()
 {
 	// Used to tell wxCas to use the wMule catalog
 	m_locale.Init();
-	m_locale.AddCatalog(wxT("amule"));
+	LoadWxCasCatalog(m_locale);
 
 #if wxUSE_LIBPNG
 	wxImage::AddHandler ( new wxPNGHandler );

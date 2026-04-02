@@ -1213,7 +1213,26 @@ void CamuleApp::OnFatalException()
 void CamuleApp::Localize_mule()
 {
 	InitCustomLanguages();
-	InitLocale(m_locale, StrLang2wx(thePrefs::GetLanguageID()));
+	const wxString langPref = thePrefs::GetLanguageID();
+	int langId = wxLANGUAGE_DEFAULT;
+	const wxLanguageInfo* resolvedInfo = nullptr;
+	if (!langPref.IsEmpty()) {
+		resolvedInfo = wxLocale::FindLanguageInfo(langPref);
+		if (resolvedInfo) {
+			langId = resolvedInfo->Language;
+		} else {
+			langId = StrLang2wx(langPref);
+			resolvedInfo = wxLocale::GetLanguageInfo(langId);
+		}
+	}
+	AddLogLineCS(CFormat(wxT("[i18n] Startup language preference='%s' resolvedId=%d canonical='%s'"))
+		% langPref
+		% langId
+		% (resolvedInfo ? resolvedInfo->CanonicalName : wxString(wxT("<null>"))));
+	InitLocale(m_locale, langId);
+	AddLogLineCS(CFormat(wxT("[i18n] Locale init result ok=%d currentLanguage=%d"))
+		% (m_locale.IsOk() ? 1 : 0)
+		% m_locale.GetLanguage());
 	if (!m_locale.IsOk()) {
 		AddLogLineN(_("The selected locale seems not to be installed on your box. (Note: I'll try to set it anyway)"));
 	}

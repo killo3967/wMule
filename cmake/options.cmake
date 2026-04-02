@@ -24,7 +24,7 @@ option (BUILD_TESTING "Build and run unit tests" ON)
 option (ENABLE_BOOST "Enable Boost.ASIO sockets (requires Boost 1.75+)" ON)
 option (ENABLE_UPNP "Enable UPnP support" ON)
 option (ENABLE_IP2COUNTRY "Enable IP2Country geolocation" OFF)
-option (ENABLE_NLS "Enable internationalization (i18n) - requires gettext" OFF)
+option (ENABLE_NLS "Enable internationalization (i18n) - requires gettext" ON)
 option (ENABLE_MMAP "Enable memory mapped files (experimental)" OFF)
 
 # Minimum versions

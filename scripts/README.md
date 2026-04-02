@@ -9,7 +9,7 @@ Este directorio contiene scripts de PowerShell para automatizar la configuració
 | Script | Descripción |
 |--------|-------------|
 | [`build-wmule.ps1`](build-wmule.ps1) | Script **principal** que combina configuración y compilación. Permite operaciones completas o parciales (solo configurar, solo compilar, reconstruir, limpiar). |
-| [`sync_skills_library.ps1`](sync_skills_library.ps1) | Script auxiliar (no relacionado con el build): sincroniza la biblioteca de skills de agentes. |
+| [`update-translations.ps1`](update-translations.ps1) | Compila los `.po` de `po/` en `.mo`, los deja en `assets/locale/` y opcionalmente los copia al directorio de build para que `wmule.exe` los detecte automáticamente. |
 
 ---
 
@@ -59,6 +59,7 @@ Muestra todas las opciones disponibles.
 - **Modularidad interna**: Operaciones divididas en funciones (`Setup-BuildEnvironment`, `Run-CmakeConfiguration`, `Run-Build`, `Clean-BuildDir`).
 - **Compatible con los flujos documentados en `AGENTS.md` y `BUILD_MEMORY.md`**:
   - Usa `-DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake`
+  - Activa `ENABLE_NLS=ON` para que `wmule.exe` y `wmulecmd.exe` carguen traducciones.
   - Respeta los flags `BUILD_MONOLITHIC`, `BUILD_AMULECMD`, `BUILD_TESTING`.
   - Genera ejecutables en `src\Debug\` (o `src\Release\` según configuración).
 

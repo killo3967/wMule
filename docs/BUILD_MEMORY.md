@@ -169,17 +169,16 @@ No se puede abrir el archivo incluir: 'config.h'
 ### Issue: "There are no translations installed for wMule"
 When opening the language selector, wxWidgets does not find any `.mo` catalogs even though the `.po` files exist.
 
-**Solution:** Compile the `.po` files with `msgfmt` and drop the resulting `amule.mo` files next to the executable:
+**Solution:** Usa el script `scripts/update-translations.ps1`, que compila todos los `.po` mediante `python` + `po2mo.py`, guarda los `.mo` en `assets/locale/<lang>/LC_MESSAGES/amule.mo` y sincroniza la carpeta `build/src/<Config>/locale`.
 
-```bash
-cd K:\wMule
-for %f in (po\*.po) do (
-    set lang=%~nf
-    msgfmt -o build\src\Debug\locale\%lang%\LC_MESSAGES\amule.mo po\%lang%.po
-)
+**Importante:** además el árbol de build debe configurarse con `ENABLE_NLS=ON`. Si `build/config.h` contiene `/* #undef ENABLE_NLS */`, el selector de idioma seguirá mostrando idiomas detectados, pero la UI arrancará siempre en inglés porque el runtime no llega a compilar la carga de catálogos.
+
+```powershell
+Set-Location K:\wMule\scripts
+./update-translations.ps1 -CopyToBuild -Configs Debug
 ```
 
-Any `.mo` placed under `wmule.exe` → `locale/<lang>/LC_MESSAGES/amule.mo` will be picked up automatically.
+Los binarios siempre buscan catálogos debajo del ejecutable (`<exe>/locale/<lang>/LC_MESSAGES/amule.mo`), por lo que basta con copiar `assets/locale` después de ejecutar el script (el propio `-CopyToBuild` lo hace si el build existe).
 
 ---
 
