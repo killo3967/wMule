@@ -1,6 +1,8 @@
 #include <muleunit/test.h>
 
 #include <common/Path.h>
+
+#include "InternalPathTestHelpers.h"
 #include <wx/filename.h>
 
 using namespace muleunit;
@@ -169,4 +171,66 @@ TEST(PathTraversalTest, IsSubPathRejectsUnrelatedPaths)
 	ASSERT_FALSE(IsSubPathOf(CPath(wxT("/var/incoming")), CPath(wxT("/tmp/incoming"))));
 	ASSERT_FALSE(IsSubPathOf(CPath(wxT("/var/incoming")), CPath(wxT("/var/tmp"))));
 #endif
+}
+
+static CInternalPathContext BuildInternalTestContext()
+{
+	CInternalPathContext context;
+	context.m_configDir = JoinPaths(wxFileName::GetTempDir(), wxT("wmule-path-guards"));
+	context.m_tempDir = JoinPaths(context.m_configDir, wxT("Temp"));
+	context.m_incomingDir = JoinPaths(context.m_configDir, wxT("Incoming"));
+	context.m_createIfMissing = true;
+	context.m_allowUnsafePreference = false;
+	context.m_allowUnsafeOutsideBase = false;
+	CPath::MakeDir(CPath(context.m_tempDir));
+	CPath::MakeDir(CPath(context.m_incomingDir));
+	return context;
+}
+
+TEST(PathTraversalTest, NormalizeInternalDirRejectsRelative)
+{
+	CInternalPathContext context = BuildInternalTestContext();
+	CInternalPathResult result = NormalizeInternalDir(EInternalPathKind::TempDir, wxT("relative\\temp"), context);
+	ASSERT_FALSE(result.m_ok);
+	ASSERT_EQUALS(EInternalPathError::NotAbsolute, result.m_error);
+}
+
+TEST(PathTraversalTest, NormalizeInternalDirAcceptsExternalOutsideBaseAndMarksFlag)
+{
+	CInternalPathContext context = BuildInternalTestContext();
+#ifdef __WINDOWS__
+	CInternalPathResult result = NormalizeInternalDir(EInternalPathKind::IncomingDir, wxT("D:\\escape"), context);
+#else
+	CInternalPathResult result = NormalizeInternalDir(EInternalPathKind::IncomingDir, wxT("/opt/escape"), context);
+#endif
+	ASSERT_TRUE(result.m_ok);
+	ASSERT_TRUE(result.m_isExternalToBase);
+	ASSERT_EQUALS(EInternalPathError::None, result.m_error);
+}
+
+TEST(PathTraversalTest, NormalizeInternalDirAcceptsExternalRegardlessOfUnsafeFlag)
+{
+	CInternalPathContext context = BuildInternalTestContext();
+	context.m_allowUnsafePreference = true;
+	context.m_allowUnsafeOutsideBase = true;
+#ifdef __WINDOWS__
+	CInternalPathResult result = NormalizeInternalDir(EInternalPathKind::IncomingDir, wxT("D:\\escape"), context);
+#else
+	CInternalPathResult result = NormalizeInternalDir(EInternalPathKind::IncomingDir, wxT("/opt/escape"), context);
+#endif
+	ASSERT_TRUE(result.m_ok);
+	ASSERT_EQUALS(EInternalPathError::None, result.m_error);
+	ASSERT_TRUE(result.m_isExternalToBase);
+}
+
+TEST(PathTraversalTest, NormalizeInternalDirStillRejectsTraversalInUnsafeMode)
+{
+	CInternalPathContext context = BuildInternalTestContext();
+	context.m_allowUnsafePreference = true;
+	context.m_allowUnsafeOutsideBase = true;
+	wxString traversal = JoinPaths(context.m_configDir, wxT(".."));
+	traversal = JoinPaths(traversal, wxT("escape"));
+	CInternalPathResult result = NormalizeInternalDir(EInternalPathKind::IncomingDir, traversal, context);
+	ASSERT_FALSE(result.m_ok);
+	ASSERT_EQUALS(EInternalPathError::TraversalRejected, result.m_error);
 }

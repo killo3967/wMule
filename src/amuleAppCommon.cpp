@@ -45,6 +45,7 @@
 #include "Logger.h"
 #include "MagnetURI.h"			// Needed for CMagnetURI
 #include "Preferences.h"
+#include <common/Path.h>
 #include "ScopedPtr.h"
 #include "MuleVersion.h"		// Needed for GetMuleVersion()
 
@@ -245,6 +246,8 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 
 	cmdline.AddSwitch(wxT("o"), wxT("log-stdout"), wxT("Print log messages to stdout."));
 	cmdline.AddSwitch(wxT("r"), wxT("reset-config"), wxT("Resets config to default values."));
+	cmdline.AddSwitch(wxT("U"), wxT("allow-unsafe-internal-paths"),
+		wxT("Allow internal directories outside the configuration base for this session (unsafe)."));
 
 #ifdef CLIENT_GUI
 	cmdline.AddSwitch(wxT("s"), wxT("skip"), wxT("Skip connection dialog."));
@@ -273,6 +276,9 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 		return false;
 	}
 
+	const bool allowUnsafeSessionGate = cmdline.Found(wxT("allow-unsafe-internal-paths"));
+	thePrefs::SetAllowUnsafeInternalDirsSessionGate(allowUnsafeSessionGate);
+
 	if ( cmdline.Found(wxT("version"))) {
 		// This looks silly with logging macros that add a timestamp.
 		printf("%s\n", (const char*)unicode2char(wxString(CFormat(wxT("%s (OS: %s)")) % FullMuleVersion % OSType)));
@@ -281,14 +287,15 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 
 	wxString configdir;
 	if (cmdline.Found(wxT("config-dir"), &configdir)) {
-		// Make an absolute path from the config dir
-		wxFileName fn(configdir);
-		fn.MakeAbsolute();
-		configdir = fn.GetFullPath();
-		if (configdir.Last() != wxFileName::GetPathSeparator()) {
-			configdir += wxFileName::GetPathSeparator();
+	CInternalPathContext context = {configdir, wxEmptyString, wxEmptyString, true, false, false};
+		CInternalPathResult result = NormalizeInternalDir(EInternalPathKind::ConfigDir, configdir, context);
+		if (result.m_ok) {
+			thePrefs::SetConfigDir(result.m_normalizedPath);
+		} else {
+			AddLogLineCS(CFormat(wxT("Rejected --config-dir '%s' (%s); using default config directory."))
+				% configdir % InternalPathErrorToString(result.m_error));
+			thePrefs::SetConfigDir(/*OtherFunctions::*/GetConfigDir(m_configFile));
 		}
-		thePrefs::SetConfigDir(configdir);
 	} else {
 		thePrefs::SetConfigDir(/*OtherFunctions::*/GetConfigDir(m_configFile));
 	}
@@ -429,8 +436,12 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 	// Create the CFG file we shall use and set the config object as the global cfg file
 	wxConfig::Set(new wxFileConfig( wxEmptyString, wxEmptyString, thePrefs::GetConfigDir() + m_configFile));
 
+	wxString loggingWarning;
+	const bool loggingPathValid = CPreferences::BootstrapLoggingConfig(wxConfigBase::Get(), &loggingWarning);
+	theLogger.ConfigurePersistentOutput(CPreferences::GetLogFileSeparator());
+
 	// Make a backup of the log file
-	CPath logfileName = CPath(thePrefs::GetConfigDir() + m_logFile);
+	CPath logfileName = CPath(CPreferences::GetLogFilePath());
 	if (logfileName.FileExists()) {
 		CPath::BackupFile(logfileName, wxT(".bak"));
 	}
@@ -443,9 +454,24 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 		return false;
 	}
 
+	if (!loggingPathValid && !loggingWarning.IsEmpty()) {
+		AddLogLineCS(loggingWarning);
+	}
+
 	// Load Preferences
 	CPreferences::BuildItemList(thePrefs::GetConfigDir());
 	CPreferences::LoadAllItems( wxConfigBase::Get() );
+
+	const bool unsafePrefPersisted = thePrefs::GetAllowUnsafeInternalDirs();
+	const bool unsafeSessionGate = thePrefs::AllowUnsafeInternalDirsSessionGate();
+	const bool unsafeEffective = thePrefs::AllowUnsafeInternalDirsEffective();
+	if (unsafePrefPersisted && !unsafeSessionGate) {
+		AddLogLineCS(wxT("Unsafe internal directories preference is set but '--allow-unsafe-internal-paths' was not provided; running in safe mode."));
+	} else if (unsafeEffective) {
+		AddLogLineCS(wxT("Unsafe internal directories enabled for this session (outside-base internal paths allowed)."));
+	} else if (unsafeSessionGate) {
+		AddLogLineCS(wxT("'--allow-unsafe-internal-paths' provided but preference is disabled; safe mode enforced."));
+	}
 
 #ifdef CLIENT_GUI
 	m_skipConnectionDialog = cmdline.Found(wxT("skip"));

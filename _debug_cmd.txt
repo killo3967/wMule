@@ -1,5 +1,5 @@
 .symopt-100
-.reload K:\amule\build\src\amule.exe
+.reload K:\wMule\build\src\wmule.exe
 .reload
 ln amule+0x18bec6
 ln amule+0x11591a

@@ -9,6 +9,14 @@
 ---
 
 ## Reglas de Interacción para Agentes
+- Responder **siempre en español de españa**.
+- Asumir **Windows 11** como sistema operativo de trabajo.
+- Preferir **PowerShell** para ejemplos, comandos y automatización;  -  - **no asumir Bash** ni herramientas GNU instaladas.
+- Usar rutas de Windows y quoting compatible con PowerShell. 
+- Todas la reglas a partir de esta, quedan supeditadas al cambio de parecer del usuario, que podra invalidarlas despues de haber sido advertido y quedara registrada la fecha de la peticion y la misma peticion.
+
+--- 
+## Reglas de Interacción para Agentes
 
 - Responder **siempre en español de españa**.
 - Asumir **Windows 11** como sistema operativo de trabajo.
@@ -62,7 +70,7 @@ Set-Location K:\wMule\build
 cmake .. `
     -DCMAKE_BUILD_TYPE=Debug `
     -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
-    -DENABLE_UPNP=OFF
+    -DENABLE_UPNP=ON
 ```
 
 ### Build
@@ -160,7 +168,7 @@ When adding a new test, update `unittests/tests/CMakeLists.txt`.
 
 - Parsing de red eD2K/Kad: validar tamaños, límites, truncamientos y casos hostiles.
 - UPnP: cubrir XML, URLs, LAN-only y retries/fallbacks.
-- Paths/configuración: cubrir traversal, rutas absolutas/UNC y normalización.
+# - Paths/configuración: cubrir traversal, rutas absolutas/UNC y normalización.
 - EC/Web: cubrir autenticación, migración de credenciales y compatibilidad.
 - Cambios en concurrencia: agregar pruebas focalizadas y documentar ownership.
 

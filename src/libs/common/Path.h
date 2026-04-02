@@ -28,6 +28,8 @@
 #include "../../Types.h"
 #include "Format.h"
 
+#include <wx/string.h>
+
 
 /**
  * This class wraps a path/filename, serving a purpose much
@@ -293,5 +295,61 @@ bool NormalizeCategoryPath(const wxString& rawPath, wxString& normalizedPath);
  * Both paths must be valid (IsOk) and absolute.
  */
 bool IsSubPathOf(const CPath& parent, const CPath& child);
+
+// Política interna: ConfigDir debe ser absoluta sin traversal; Temp/Incoming
+// deben colgar de ConfigDir; OSDir debe colgar de IncomingDir.
+enum class EInternalPathKind {
+	ConfigDir,
+	TempDir,
+	IncomingDir,
+	OSDir
+};
+
+enum class EInternalPathError {
+	None,
+	EmptyInput,
+	NotAbsolute,
+	TraversalRejected,
+	OutsideBase,
+	InvalidBase,
+	NormalizeFailed,
+	FileInsteadOfDir,
+	AccessDenied
+};
+
+struct CInternalPathContext {
+	wxString m_configDir;
+	wxString m_tempDir;
+	wxString m_incomingDir;
+	bool m_createIfMissing;
+	bool m_allowUnsafePreference;
+	bool m_allowUnsafeOutsideBase;
+};
+
+bool InternalPathAllowsExternalBase(EInternalPathKind kind);
+
+struct CInternalPathResult {
+	bool m_ok;
+	wxString m_normalizedPath;
+	wxString m_evaluatedBase;
+	EInternalPathError m_error;
+	bool m_isExternalToBase;
+};
+
+struct COSDirValidationOutcome {
+	CInternalPathResult m_result;
+	bool m_usedFallback;
+	EInternalPathError m_rejectedError;
+};
+
+CInternalPathResult NormalizeInternalDir(EInternalPathKind kind,
+	const wxString& candidate, const CInternalPathContext& context);
+wxString InternalPathErrorToString(EInternalPathError error);
+bool ResolveInternalPathKind(const wxString& key, EInternalPathKind& kind);
+wxString GetDefaultInternalPath(EInternalPathKind kind, const CInternalPathContext& context);
+CInternalPathResult NormalizePreferencePathForLoad(const wxString& key,
+	const wxString& candidate, const CInternalPathContext& context);
+COSDirValidationOutcome NormalizeOSDirWithFallback(const wxString& candidate,
+	const CInternalPathContext& context);
 
 #endif

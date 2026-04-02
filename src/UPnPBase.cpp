@@ -23,60 +23,523 @@
 // Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301, USA
 //
 
-#include "config.h"		// Needed for ENABLE_UPNP
+#include "config.h" // Needed for ENABLE_UPNP
 
 #ifdef ENABLE_UPNP
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-// check for broken Debian-hacked libUPnP
-#include <upnp.h>
-#ifdef STRING_H				// defined in UpnpString.h Yes, I would have liked UPNPSTRING_H much better.
-#define BROKEN_DEBIAN_LIBUPNP
-#endif
-
 #include "UPnPBase.h"
-#include "UPnPEventLog.h"
-#include "UPnPUrlUtils.h"
-#include "UPnPUrlUtils.h"
 
-#include <algorithm>		// For transform()
-#include <cctype>
+#include <algorithm>
 #include <cstdlib>
+#include <cstring>
+#include <sstream>
+#include <vector>
 
-#ifdef BROKEN_DEBIAN_LIBUPNP
-  #define GET_UPNP_STRING(a) UpnpString_get_String(a)
-#else
-  #define GET_UPNP_STRING(a) (a)
-#endif
+#include <wx/utils.h>
+
+#include "Logger.h"
+#include "UPnPUrlUtils.h"
+
+#include <miniupnpc/miniupnpc.h>
+#include <miniupnpc/upnpcommands.h>
+#include <miniupnpc/upnperrors.h>
+
+// Usar las constantes de miniupnpc.h directamente
+// UPNP_GetValidIGD retorna:
+//   UPNP_NO_IGD (0) = No se encontró IGD
+//   UPNP_CONNECTED_IGD (1) = IGD válido y conectado a internet
+//   UPNP_PRIVATEIP_IGD (2) = IGD válido pero con dirección privada (no routable)
+//   UPNP_DISCONNECTED_IGD (3) = IGD válido pero desconectado de internet
+//   UPNP_UNKNOWN_DEVICE (4) = Dispositivo desconocido
 
 std::string stdEmptyString;
 
-const char s_argument[] = "argument";
-const char s_argumentList[] = "argumentList";
-const char s_action[] = "action";
-const char s_actionList[] = "actionList";
-const char s_allowedValue[] = "allowedValue";
-const char s_allowedValueList[] = "allowedValueList";
-const char s_stateVariable[] = "stateVariable";
-const char s_serviceStateTable[] = "serviceStateTable";
-const char s_service[] = "service";
-const char s_serviceList[] = "serviceList";
-const char s_device[] = "device";
-const char s_deviceList[] = "deviceList";
+namespace {
 
-/**
- * Case insensitive std::string comparison
- */
-static bool stdStringIsEqualCI(const std::string &s1, const std::string &s2)
+const wxLongLong_t kUPnPSuppressionWindowMs = 15 * 60 * 1000;
+
+wxString FailureStageLabel(CUPnPFailureStage stage)
 {
-	std::string ns1(s1);
-	std::string ns2(s2);
-	std::transform(ns1.begin(), ns1.end(), ns1.begin(), tolower);
-	std::transform(ns2.begin(), ns2.end(), ns2.begin(), tolower);
-	return ns1 == ns2;
+	switch (stage) {
+	case UPNP_STAGE_DISCOVERY_EMPTY:
+		return wxT("discovery-empty");
+	case UPNP_STAGE_DISCOVERY_FILTERED:
+		return wxT("discovery-filtered");
+	case UPNP_STAGE_IGD_INVALID:
+		return wxT("igd-invalid");
+	case UPNP_STAGE_MAPPING_PRIMARY_FAILED:
+		return wxT("mapping-primary-failed");
+	case UPNP_STAGE_MAPPING_FALLBACK_FAILED:
+		return wxT("mapping-fallback-failed");
+	case UPNP_STAGE_NONE:
+	default:
+		return wxT("none");
+	}
 }
+
+
+CUPnPPersistedMapping ToPersistedMapping(const CUPnPPortMapping& mapping, uint16 externalPortOverride = 0)
+{
+	CUPnPPersistedMapping persisted;
+	const unsigned long port = std::strtoul(mapping.getPort().c_str(), nullptr, 10);
+	persisted.service = wxString::FromUTF8(mapping.getDescription().c_str());
+	persisted.protocol = wxString::FromUTF8(mapping.getProtocol().c_str());
+	persisted.internalPort = static_cast<uint16>(port);
+	if (externalPortOverride != 0) {
+		persisted.externalPort = externalPortOverride;
+	} else {
+		persisted.externalPort = static_cast<uint16>(port);
+	}
+	persisted.enabled = mapping.getEnabled() == "1";
+	return persisted;
+}
+
+
+std::vector<CUPnPPersistedMapping> ToPersistedMappings(const std::vector<CUPnPPortMapping>& mappings)
+{
+	std::vector<CUPnPPersistedMapping> persisted;
+	persisted.reserve(mappings.size());
+	for (std::vector<CUPnPPortMapping>::const_iterator it = mappings.begin(); it != mappings.end(); ++it) {
+		persisted.push_back(ToPersistedMapping(*it));
+	}
+	return persisted;
+}
+
+
+bool CompareMappingLess(const CUPnPPersistedMapping& lhs, const CUPnPPersistedMapping& rhs)
+{
+	int serviceCmp = lhs.service.CmpNoCase(rhs.service);
+	if (serviceCmp != 0) {
+		return serviceCmp < 0;
+	}
+	int protocolCmp = lhs.protocol.CmpNoCase(rhs.protocol);
+	if (protocolCmp != 0) {
+		return protocolCmp < 0;
+	}
+	if (lhs.internalPort != rhs.internalPort) {
+		return lhs.internalPort < rhs.internalPort;
+	}
+	if (lhs.externalPort != rhs.externalPort) {
+		return lhs.externalPort < rhs.externalPort;
+	}
+	return lhs.enabled && !rhs.enabled;
+}
+
+
+bool HaveSameMappings(const std::vector<CUPnPPersistedMapping>& lhs, const std::vector<CUPnPPersistedMapping>& rhs)
+{
+	if (lhs.size() != rhs.size()) {
+		return false;
+	}
+
+	std::vector<CUPnPPersistedMapping> sortedLhs(lhs);
+	std::vector<CUPnPPersistedMapping> sortedRhs(rhs);
+	std::sort(sortedLhs.begin(), sortedLhs.end(), CompareMappingLess);
+	std::sort(sortedRhs.begin(), sortedRhs.end(), CompareMappingLess);
+
+	for (size_t i = 0; i < sortedLhs.size(); ++i) {
+		const CUPnPPersistedMapping& left = sortedLhs[i];
+		const CUPnPPersistedMapping& right = sortedRhs[i];
+		if (left.enabled != right.enabled) {
+			return false;
+		}
+		if (left.internalPort != right.internalPort || left.externalPort != right.externalPort) {
+			return false;
+		}
+		if (left.service.CmpNoCase(right.service) != 0) {
+			return false;
+		}
+		if (left.protocol.CmpNoCase(right.protocol) != 0) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+
+wxString DescribeMiniupnpcError(int code)
+{
+	switch (code) {
+	case 0: // UPNPCOMMAND_SUCCESS from upnpcommands.h
+		return wxEmptyString;
+	case 714:
+		return wxT("UPnP: el mapeo solicitado no existe (714: NoSuchEntryInArray).");
+	case 718:
+		return wxT("UPnP: conflicto con una entrada existente (718: ConflictInMappingEntry).");
+	case UPNP_DISCONNECTED_IGD: // Equivalent to not connected to internet
+		return wxT("El IGD encontrado no está conectado a Internet.");
+	case UPNP_PRIVATEIP_IGD: // Valid but reserved address
+		return wxT("El IGD encontrado tiene una dirección privada y no es accesible desde Internet.");
+	default:
+		return wxString::Format(wxT("UPnP error %d: %s"), code, wxString::FromUTF8(strupnperror(code)));
+	}
+}
+
+
+bool ShouldAttemptPortFallback(int code)
+{
+	return code == 718 || code == 713;
+}
+
+
+class CMiniUPnPClient : public IUPnPClient
+{
+public:
+CMiniUPnPClient()
+:
+m_urls(),
+m_data(),
+m_lanAddress(),
+m_hasUrls(false),
+m_failureStage(UPNP_STAGE_NONE),
+m_discoveredDevices(0),
+m_filteredDevices(0),
+m_lastMappedExternalPort(0)
+{
+	std::memset(&m_urls, 0, sizeof(m_urls));
+	std::memset(&m_data, 0, sizeof(m_data));
+}
+
+	~CMiniUPnPClient() override
+	{
+		FreeUPNPUrls(&m_urls);
+	}
+
+	bool Discover(CUPnPDiscoveryInfo& out, wxString& error) override
+	{
+		FreeUPNPUrls(&m_urls);
+		std::memset(&m_urls, 0, sizeof(m_urls));
+		std::memset(&m_data, 0, sizeof(m_data));
+		m_lanAddress.clear();
+		m_hasUrls = false;
+		m_failureStage = UPNP_STAGE_NONE;
+		m_discoveredDevices = 0;
+		m_filteredDevices = 0;
+		m_lastMappedExternalPort = 0;
+
+		int discoverErr = 0;
+		UPNPDev* devlist = upnpDiscover(2000, nullptr, nullptr, 0, 0, 2, &discoverErr);
+		if (devlist == nullptr) {
+			m_failureStage = UPNP_STAGE_DISCOVERY_EMPTY;
+			error = wxString::Format(wxT("No se encontraron dispositivos UPnP en LAN (discover err=%d)."), discoverErr);
+			return false;
+		}
+
+		size_t safeDevices = 0;
+		int rejectedDevices = 0;
+		for (UPNPDev* dev = devlist; dev != nullptr; dev = dev->pNext) {
+			++m_discoveredDevices;
+			std::string descCandidate = dev->descURL ? dev->descURL : stdEmptyString;
+			std::string ignored;
+			if (AssignLanUrlOrClear("descURL", descCandidate, ignored, nullptr)) {
+				++safeDevices;
+			} else {
+				++rejectedDevices;
+			}
+		}
+		m_filteredDevices = static_cast<uint32>(rejectedDevices);
+
+		if (safeDevices == 0) {
+			freeUPNPDevlist(devlist);
+			m_failureStage = UPNP_STAGE_DISCOVERY_FILTERED;
+			error = wxT("Descubrimiento UPnP descartado: ningún IGD con descURL LAN válido.");
+			return false;
+		}
+		if (rejectedDevices > 0) {
+			AddDebugLogLineC(logUPnP, wxString::Format(wxT("UPnP: descartando %d dispositivos con descURL fuera de LAN antes de validar IGD"), rejectedDevices));
+		}
+
+		std::vector<UPNPDev> filtered;
+		filtered.reserve(safeDevices);
+		for (UPNPDev* dev = devlist; dev != nullptr; dev = dev->pNext) {
+			std::string descCandidate = dev->descURL ? dev->descURL : stdEmptyString;
+			std::string ignored;
+			if (AssignLanUrlOrClear("descURL", descCandidate, ignored, nullptr)) {
+				filtered.push_back(*dev);
+			}
+		}
+		for (size_t i = 0; i + 1 < filtered.size(); ++i) {
+			filtered[i].pNext = &filtered[i + 1];
+		}
+		if (!filtered.empty()) {
+			filtered.back().pNext = nullptr;
+		}
+
+        UPNPDev* filteredList = filtered.empty() ? nullptr : &filtered.front();
+
+		char lanaddr[64] = {0};
+		char wanaddr[64] = {0};
+		const int igd = UPNP_GetValidIGD(filteredList, &m_urls, &m_data,
+			lanaddr, static_cast<int>(sizeof(lanaddr)),
+			wanaddr, static_cast<int>(sizeof(wanaddr)));
+		freeUPNPDevlist(devlist);
+
+		// Mapear códigos de retorno de UPNP_GetValidIGD a nuestros manejos de error
+		if (igd == UPNP_DISCONNECTED_IGD) { // Equivalent to not connected to internet
+			error = DescribeMiniupnpcError(igd);
+			m_failureStage = UPNP_STAGE_IGD_INVALID;
+			FreeUPNPUrls(&m_urls);
+			return false;
+		}
+		if (igd <= 0 || igd == UPNP_NO_IGD || igd == UPNP_PRIVATEIP_IGD) { // Tratar privados como error para ahora
+			error = DescribeMiniupnpcError(igd);
+			m_failureStage = UPNP_STAGE_IGD_INVALID;
+			FreeUPNPUrls(&m_urls);
+			return false;
+		}
+		std::string descUrl = m_urls.ipcondescURL ? m_urls.ipcondescURL : stdEmptyString;
+		std::string controlUrl = m_urls.controlURL ? m_urls.controlURL : stdEmptyString;
+		std::string warning;
+		if (!AssignLanUrlOrClear("descURL", descUrl, descUrl, &warning)) {
+			error = wxString::FromUTF8(warning.c_str());
+			m_failureStage = UPNP_STAGE_DISCOVERY_FILTERED;
+			if (m_filteredDevices == 0) {
+				m_filteredDevices = m_discoveredDevices;
+			}
+			FreeUPNPUrls(&m_urls);
+			return false;
+		}
+		if (!AssignLanUrlOrClear("controlURL", controlUrl, controlUrl, &warning)) {
+			error = wxString::FromUTF8(warning.c_str());
+			m_failureStage = UPNP_STAGE_DISCOVERY_FILTERED;
+			if (m_filteredDevices == 0) {
+				m_filteredDevices = m_discoveredDevices;
+			}
+			FreeUPNPUrls(&m_urls);
+			return false;
+		}
+
+		m_lanAddress = lanaddr;
+		m_hasUrls = true;
+
+		out.routerId = wxString::FromUTF8(m_data.urlbase);
+		if (out.routerId.IsEmpty()) {
+			out.routerId = wxString::FromUTF8(controlUrl.c_str());
+		}
+		out.routerName = wxString::FromUTF8(m_data.presentationurl);
+		if (out.routerName.IsEmpty()) {
+			out.routerName = wxString::FromUTF8(m_data.first.servicetype);
+		}
+		out.adapterId = wxString::FromUTF8(m_lanAddress.c_str());
+		out.descUrl = descUrl;
+		out.controlUrl = controlUrl;
+		out.serviceType = std::string(m_data.first.servicetype);
+		out.discoveredDevices = m_discoveredDevices;
+		out.filteredDevices = m_filteredDevices;
+		out.failureStage = UPNP_STAGE_NONE;
+		m_failureStage = UPNP_STAGE_NONE;
+		return true;
+	}
+
+	bool AddMapping(const CUPnPPortMapping& mapping, wxString& error) override
+	{
+		if (!m_hasUrls) {
+			error = wxT("UPnP no está inicializado: no hay IGD válido.");
+			m_failureStage = UPNP_STAGE_IGD_INVALID;
+			return false;
+		}
+		m_failureStage = UPNP_STAGE_NONE;
+		m_lastMappedExternalPort = 0;
+
+		const int ret = UPNP_AddPortMapping(
+			m_urls.controlURL,
+			m_data.first.servicetype,
+			mapping.getPort().c_str(),
+			mapping.getPort().c_str(),
+			m_lanAddress.c_str(),
+			mapping.getDescription().c_str(),
+			mapping.getProtocol().c_str(),
+			nullptr,
+			"0");
+
+		if (ret != UPNPCOMMAND_SUCCESS) {
+			const bool fallbackEligible = ShouldAttemptPortFallback(ret);
+			error = DescribeMiniupnpcError(ret);
+			m_failureStage = UPNP_STAGE_MAPPING_PRIMARY_FAILED;
+			wxString fallbackError;
+			bool fallbackTried = false;
+			if (fallbackEligible && SupportsAddAnyPortMapping()) {
+				fallbackTried = true;
+				AddDebugLogLineC(logUPnP, wxString::Format(wxT("UPnP: router rechazó el mismo puerto (error %d), intentando AddAnyPortMapping"), ret));
+				if (TryFallbackAddAnyPortMapping(mapping, fallbackError)) {
+					m_failureStage = UPNP_STAGE_NONE;
+					if (m_lastMappedExternalPort != 0) {
+						AddDebugLogLineC(logUPnP, wxString::Format(wxT("UPnP: AddAnyPortMapping aplicó fallback con puerto externo %u"), m_lastMappedExternalPort));
+					} else {
+						AddDebugLogLineC(logUPnP, wxT("UPnP: AddAnyPortMapping aplicó fallback con puerto externo asignado por el router"));
+					}
+					return true;
+				}
+			} else if (fallbackEligible) {
+				AddDebugLogLineC(logUPnP, wxT("UPnP: router rechazó el mismo puerto pero la librería miniupnpc no ofrece AddAnyPortMapping."));
+			}
+
+			if (fallbackEligible && fallbackTried) {
+				m_failureStage = UPNP_STAGE_MAPPING_FALLBACK_FAILED;
+			}
+			if (fallbackEligible && !fallbackError.IsEmpty()) {
+				error = fallbackError;
+				AddDebugLogLineC(logUPnP, fallbackError);
+			}
+			return false;
+		}
+
+		m_lastMappedExternalPort = ParseMappingPort(mapping);
+		return true;
+	}
+
+	bool DeleteMapping(const CUPnPPortMapping& mapping, wxString& error) override
+	{
+		if (!m_hasUrls) {
+			error = wxT("UPnP no está inicializado: no hay IGD válido.");
+			return false;
+		}
+
+		const int ret = UPNP_DeletePortMapping(
+			m_urls.controlURL,
+			m_data.first.servicetype,
+			mapping.getPort().c_str(),
+			mapping.getProtocol().c_str(),
+			nullptr);
+		if (ret != UPNPCOMMAND_SUCCESS) {
+			error = DescribeMiniupnpcError(ret);
+			return false;
+		}
+		return true;
+	}
+
+	bool GetExternalIp(wxString& outIp, wxString& error) override
+	{
+		if (!m_hasUrls) {
+			error = wxT("UPnP no está inicializado: no hay IGD válido.");
+			return false;
+		}
+		char externalIp[40] = {0};
+		const int ret = UPNP_GetExternalIPAddress(
+			m_urls.controlURL,
+			m_data.first.servicetype,
+			externalIp);
+		if (ret != UPNPCOMMAND_SUCCESS) {
+			error = DescribeMiniupnpcError(ret);
+			return false;
+		}
+		outIp = wxString::FromUTF8(externalIp);
+		return true;
+	}
+
+	CUPnPFailureStage GetFailureStage() const override
+	{
+		return m_failureStage;
+	}
+
+	uint16 GetLastMappedExternalPort() const override
+	{
+		return m_lastMappedExternalPort;
+	}
+
+	uint32 GetDiscoveredDeviceCount() const override
+	{
+		return m_discoveredDevices;
+	}
+
+	uint32 GetFilteredDeviceCount() const override
+	{
+		return m_filteredDevices;
+	}
+
+private:
+	bool SupportsAddAnyPortMapping() const
+	{
+		return true;
+	}
+
+	bool TryFallbackAddAnyPortMapping(const CUPnPPortMapping& mapping, wxString& error)
+	{
+		if (!SupportsAddAnyPortMapping()) {
+			return false;
+		}
+		char reservedPort[6] = {0};
+		const int ret = UPNP_AddAnyPortMapping(
+			m_urls.controlURL,
+			m_data.first.servicetype,
+			mapping.getPort().c_str(),
+			mapping.getPort().c_str(),
+			m_lanAddress.c_str(),
+			mapping.getDescription().c_str(),
+			mapping.getProtocol().c_str(),
+			nullptr,
+			"0",
+			reservedPort);
+		if (ret != UPNPCOMMAND_SUCCESS) {
+			error = DescribeMiniupnpcError(ret);
+			return false;
+		}
+
+		unsigned long parsedPort = std::strtoul(reservedPort, nullptr, 10);
+		if (parsedPort == 0 || parsedPort > 65535) {
+			error = wxString::Format(wxT("UPnP: AddAnyPortMapping devolvió un puerto inválido (%s)."), wxString::FromUTF8(reservedPort));
+			return false;
+		}
+		m_lastMappedExternalPort = static_cast<uint16>(parsedPort);
+		return true;
+	}
+
+	uint16 ParseMappingPort(const CUPnPPortMapping& mapping) const
+	{
+		return static_cast<uint16>(std::strtoul(mapping.getPort().c_str(), nullptr, 10));
+	}
+
+	UPNPUrls m_urls;
+	IGDdatas m_data;
+	std::string m_lanAddress;
+	bool m_hasUrls;
+	CUPnPFailureStage m_failureStage;
+	uint32 m_discoveredDevices;
+	uint32 m_filteredDevices;
+	uint16 m_lastMappedExternalPort;
+};
+
+} // namespace
+
+
+bool ShouldSuppressUPnPRetry(
+	const CUPnPLastResult& lastResult,
+	const std::vector<CUPnPPersistedMapping>& requested,
+	wxLongLong_t now,
+	bool forceRetry,
+	bool& suppressedUntilSessionEnd,
+	wxString& reason)
+{
+	suppressedUntilSessionEnd = false;
+	if (forceRetry) {
+		return false;
+	}
+
+	const bool lastWasFailure = lastResult.status == UPNP_LAST_FAIL || lastResult.status == UPNP_LAST_SUPPRESSED;
+	if (!lastWasFailure) {
+		return false;
+	}
+	if (lastResult.routerId.IsEmpty()) {
+		return false;
+	}
+	if (!HaveSameMappings(lastResult.requested, requested)) {
+		return false;
+	}
+	const wxLongLong_t age = now - static_cast<wxLongLong_t>(lastResult.timestampUtc);
+	const bool withinWindow = age >= 0 && age < kUPnPSuppressionWindowMs;
+	if (!withinWindow && !lastResult.suppressedUntilSessionEnd) {
+		return false;
+	}
+
+	suppressedUntilSessionEnd = lastResult.suppressedUntilSessionEnd;
+	reason = wxT("UPnP reintento suprimido: el intento previo falló recientemente para el mismo router/puertos.");
+	if (lastResult.suppressedUntilSessionEnd) {
+		reason = wxT("UPnP reintento suprimido para esta sesión tras el fallo previo. Usa el botón de reintento manual para forzarlo.");
+	}
+	return true;
+}
+
 
 CUPnPPortMapping::CUPnPPortMapping(
 	int port,
@@ -96,1749 +559,303 @@ m_key()
 	m_key = m_protocol + m_port;
 }
 
-namespace UPnP {
-
-static const std::string ROOT_DEVICE("upnp:rootdevice");
-
-namespace Device {
-	static const std::string IGW("urn:schemas-upnp-org:device:InternetGatewayDevice:1");
-	static const std::string WAN("urn:schemas-upnp-org:device:WANDevice:1");
-	static const std::string WAN_Connection("urn:schemas-upnp-org:device:WANConnectionDevice:1");
-	static const std::string LAN("urn:schemas-upnp-org:device:LANDevice:1");
-}
-
-namespace Service {
-	static const std::string Layer3_Forwarding("urn:schemas-upnp-org:service:Layer3Forwarding:1");
-	static const std::string WAN_Common_Interface_Config("urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1");
-	static const std::string WAN_IP_Connection("urn:schemas-upnp-org:service:WANIPConnection:1");
-	static const std::string WAN_PPP_Connection("urn:schemas-upnp-org:service:WANPPPConnection:1");
-}
-
-static std::string ProcessErrorMessage(
-	const std::string &messsage,
-	int errorCode,
-	const DOMString errorString,
-	IXML_Document *doc)
-{
-	std::ostringstream msg;
-	if (errorString == nullptr || *errorString == 0) {
-		errorString = "Not available";
-	}
-	if (errorCode > 0) {
-		msg << "Error: " <<
-			messsage <<
-			": Error code :'";
-		if (doc) {
-			CUPnPError e(doc);
-			msg << e.getErrorCode() <<
-				"', Error description :'" <<
-				e.getErrorDescription() <<
-				"'.";
-		} else {
-			msg << errorCode <<
-				"', Error description :'" <<
-				errorString <<
-				"'.";
-		}
-		AddDebugLogLineN(logUPnP, msg);
-	} else {
-		msg << "Error: " <<
-			messsage <<
-			": UPnP SDK error: " <<
-			UpnpGetErrorMessage(errorCode) <<
-			" (" << errorCode << ").";
-		AddDebugLogLineN(logUPnP, msg);
-	}
-
-	return msg.str();
-}
-
-
-static void ProcessActionResponse(
-	IXML_Document *RespDoc,
-	const std::string &actionName)
-{
-	std::ostringstream msg;
-	msg << "Response: ";
-	IXML_Element *root = IXML::Document::GetRootElement(RespDoc);
-	IXML_Element *child = IXML::Element::GetFirstChild(root);
-	if (child) {
-		while (child) {
-			const DOMString childTag = IXML::Element::GetTag(child);
-			std::string childValue = IXML::Element::GetTextValue(child);
-			msg << "\n    " <<
-				childTag << "='" <<
-				childValue << "'";
-			child = IXML::Element::GetNextSibling(child);
-		}
-	} else {
-		msg << "\n    Empty response for action '" <<
-			actionName << "'.";
-	}
-	AddDebugLogLineN(logUPnP, msg);
-}
-
-} /* namespace UPnP */
-
-
-namespace IXML {
-
-/*!
- * \brief Returns the root node of a given document.
- */
-IXML_Element *Document::GetRootElement(IXML_Document *doc)
-{
-	return reinterpret_cast<IXML_Element *>(ixmlNode_getFirstChild(&doc->n));
-}
-
-/*!
- * \brief Frees the given document.
- *
- * \note Any nodes extracted via any other interface function will become
- * invalid after this call unless explicitly cloned.
- */
-inline void Document::Free(IXML_Document *doc)
-{
-	ixmlDocument_free(doc);
-}
-
-namespace Element {
-
-/*!
- * \brief Returns the first child of a given element.
- */
-IXML_Element *GetFirstChild(IXML_Element *parent)
-{
-	if (!parent) {
-		return nullptr;
-	}
-	return reinterpret_cast<IXML_Element *>(ixmlNode_getFirstChild(&parent->n));
-}
-
-
-
-/*!
- * \brief Returns the next sibling of a given child.
- */
-IXML_Element *GetNextSibling(IXML_Element *child)
-{
-	if (!child) {
-		return nullptr;
-	}
-	return reinterpret_cast<IXML_Element *>(ixmlNode_getNextSibling(&child->n));
-}
-
-
-/*!
- * \brief Returns the element tag (name)
- */
-const DOMString GetTag(IXML_Element *element)
-{
-	return ixmlNode_getNodeName(&element->n);
-}
-
-
-/*!
- * \brief Returns the TEXT node value of the current node.
- */
-const std::string GetTextValue(IXML_Element *element)
-{
-	if (!element) {
-		return stdEmptyString;
-	}
-	IXML_Node *text = ixmlNode_getFirstChild(&element->n);
-	if (!text) {
-		return stdEmptyString;
-	}
-	const DOMString s = ixmlNode_getNodeValue(text);
-	std::string ret;
-	if (s) {
-		ret = s;
-	}
-
-	return ret;
-}
-
-
-/*!
- * \brief Returns the TEXT node value of the first child matching tag.
- */
-const std::string GetChildValueByTag(IXML_Element *element, const DOMString tag)
-{
-	return GetTextValue(GetFirstChildByTag(element, tag));
-}
-
-
-/*!
- * \brief Returns the first child element that matches the requested tag or
- * nullptr if not found.
- */
-IXML_Element *GetFirstChildByTag(IXML_Element *element, const DOMString tag)
-{
-	if (!element || !tag) {
-		return nullptr;
-	}
-
-	IXML_Node *child = ixmlNode_getFirstChild(&element->n);
-	while(child) {
-		const DOMString childTag = ixmlNode_getNodeName(child);
-		if (childTag && strcmp(tag, childTag) == 0) {
-			break;
-		}
-		child = ixmlNode_getNextSibling(child);
-	}
-
-	return reinterpret_cast<IXML_Element *>(child);
-}
-
-
-/*!
- * \brief Returns the next sibling element that matches the requested tag. Should be
- * used with the return value of GetFirstChildByTag().
- */
-IXML_Element *GetNextSiblingByTag(IXML_Element *element, const DOMString tag)
-{
-	if (!element || !tag) {
-		return nullptr;
-	}
-
-	IXML_Node *child = &element->n;
-	while (child) {
-		child = ixmlNode_getNextSibling(child);
-		if (!child) {
-			break;
-		}
-		const DOMString childTag = ixmlNode_getNodeName(child);
-		if (childTag && strcmp(tag, childTag) == 0) {
-			break;
-		}
-	}
-
-	return reinterpret_cast<IXML_Element *>(child);
-}
-
-
-const std::string GetAttributeByTag(IXML_Element *element, const DOMString tag)
-{
-	if (!element || !tag) {
-		return stdEmptyString;
-	}
-	IXML_NamedNodeMap *NamedNodeMap = ixmlNode_getAttributes(&element->n);
-	IXML_Node *attribute = ixmlNamedNodeMap_getNamedItem(NamedNodeMap, tag);
-	const DOMString s = attribute ? ixmlNode_getNodeValue(attribute) : nullptr;
-	std::string ret;
-	if (s) {
-		ret = s;
-	}
-	ixmlNamedNodeMap_free(NamedNodeMap);
-
-	return ret;
-}
-
-} /* namespace Element */
-
-} /* namespace IXML */
-
-
-CUPnPError::CUPnPError(IXML_Document *errorDoc)
-:
-m_root            (IXML::Document::GetRootElement(errorDoc)),
-m_ErrorCode       (IXML::Element::GetChildValueByTag(m_root, "errorCode")),
-m_ErrorDescription(IXML::Element::GetChildValueByTag(m_root, "errorDescription"))
-{
-}
-
-
-CUPnPArgument::CUPnPArgument(
-	const CUPnPControlPoint &WXUNUSED(upnpControlPoint),
-	IXML_Element *argument,
-	const std::string &WXUNUSED(SCPDURL))
-:
-m_name                (IXML::Element::GetChildValueByTag(argument, "name")),
-m_direction           (IXML::Element::GetChildValueByTag(argument, "direction")),
-m_retval              (IXML::Element::GetFirstChildByTag(argument, "retval")),
-m_relatedStateVariable(IXML::Element::GetChildValueByTag(argument, "relatedStateVariable"))
-{
-	std::ostringstream msg;
-	msg <<	"\n    Argument:"                  <<
-		"\n        name: "                 << m_name <<
-		"\n        direction: "            << m_direction <<
-		"\n        retval: "               << m_retval <<
-		"\n        relatedStateVariable: " << m_relatedStateVariable;
-	AddDebugLogLineN(logUPnP, msg);
-}
-
-
-CUPnPAction::CUPnPAction(
-	const CUPnPControlPoint &upnpControlPoint,
-	IXML_Element *action,
-	const std::string &SCPDURL)
-:
-m_ArgumentList(upnpControlPoint, action, SCPDURL),
-m_name(IXML::Element::GetChildValueByTag(action, "name"))
-{
-	std::ostringstream msg;
-	msg <<	"\n    Action:"    <<
-		"\n        name: " << m_name;
-	AddDebugLogLineN(logUPnP, msg);
-}
-
-
-CUPnPAllowedValue::CUPnPAllowedValue(
-	const CUPnPControlPoint &WXUNUSED(upnpControlPoint),
-	IXML_Element *allowedValue,
-	const std::string &WXUNUSED(SCPDURL))
-:
-m_allowedValue(IXML::Element::GetTextValue(allowedValue))
-{
-	std::ostringstream msg;
-	msg <<	"\n    AllowedValue:"      <<
-		"\n        allowedValue: " << m_allowedValue;
-	AddDebugLogLineN(logUPnP, msg);
-}
-
-
-CUPnPStateVariable::CUPnPStateVariable(
-	const CUPnPControlPoint &upnpControlPoint,
-	IXML_Element *stateVariable,
-	const std::string &SCPDURL)
-:
-m_AllowedValueList(upnpControlPoint, stateVariable, SCPDURL),
-m_name        (IXML::Element::GetChildValueByTag(stateVariable, "name")),
-m_dataType    (IXML::Element::GetChildValueByTag(stateVariable, "dataType")),
-m_defaultValue(IXML::Element::GetChildValueByTag(stateVariable, "defaultValue")),
-m_sendEvents  (IXML::Element::GetAttributeByTag (stateVariable, "sendEvents"))
-{
-	std::ostringstream msg;
-	msg <<	"\n    StateVariable:"     <<
-		"\n        name: "         << m_name <<
-		"\n        dataType: "     << m_dataType <<
-		"\n        defaultValue: " << m_defaultValue <<
-		"\n        sendEvents: "   << m_sendEvents;
-	AddDebugLogLineN(logUPnP, msg);
-}
-
-
-CUPnPSCPD::CUPnPSCPD(
-	const CUPnPControlPoint &upnpControlPoint,
-	IXML_Element *scpd,
-	const std::string &SCPDURL)
-:
-m_ActionList(upnpControlPoint, scpd, SCPDURL),
-m_ServiceStateTable(upnpControlPoint, scpd, SCPDURL),
-m_SCPDURL(SCPDURL)
-{
-}
-
-
-CUPnPArgumentValue::CUPnPArgumentValue()
-:
-m_argument(),
-m_value()
-{
-}
-
-
-CUPnPArgumentValue::CUPnPArgumentValue(
-	const std::string &argument, const std::string &value)
-:
-m_argument(argument),
-m_value(value)
-{
-}
-
-
-CUPnPService::CUPnPService(
-	const CUPnPControlPoint &upnpControlPoint,
-	IXML_Element *service,
-	const std::string &URLBase)
-:
-m_UPnPControlPoint(upnpControlPoint),
-m_serviceType(IXML::Element::GetChildValueByTag(service, "serviceType")),
-m_serviceId  (IXML::Element::GetChildValueByTag(service, "serviceId")),
-m_SCPDURL    (IXML::Element::GetChildValueByTag(service, "SCPDURL")),
-m_controlURL (IXML::Element::GetChildValueByTag(service, "controlURL")),
-m_eventSubURL(IXML::Element::GetChildValueByTag(service, "eventSubURL")),
-m_timeout(1801),
-m_SCPD(nullptr)
-{
-	std::ostringstream msg;
-	int errcode;
-
-	memset(m_SID, 0 , sizeof(Upnp_SID));
-
-	std::vector<char> vscpdURL(URLBase.length() + m_SCPDURL.length() + 1);
-	char *scpdURL = &vscpdURL[0];
-	errcode = UpnpResolveURL(
-		URLBase.c_str(),
-		m_SCPDURL.c_str(),
-		scpdURL);
-	if( errcode != UPNP_E_SUCCESS ) {
-		msg << "Error generating scpdURL from " <<
-			"|" << URLBase << "|" <<
-			m_SCPDURL << "|.";
-		AddDebugLogLineN(logUPnP, msg);
-	} else {
-		std::string warn;
-		if (!AssignLanUrlOrClear("SCPDURL", scpdURL, m_absSCPDURL, &warn)) {
-			AddDebugLogLineN(logUPnP, wxString::FromUTF8(warn.c_str()));
-		}
-	}
-
-	std::vector<char> vcontrolURL(
-		URLBase.length() + m_controlURL.length() + 1);
-	char *controlURL = &vcontrolURL[0];
-	errcode = UpnpResolveURL(
-		URLBase.c_str(),
-		m_controlURL.c_str(),
-		controlURL);
-	if( errcode != UPNP_E_SUCCESS ) {
-		msg << "Error generating controlURL from " <<
-			"|" << URLBase << "|" <<
-			m_controlURL << "|.";
-		AddDebugLogLineN(logUPnP, msg);
-	} else {
-		std::string warn;
-		if (!AssignLanUrlOrClear("controlURL", controlURL, m_absControlURL, &warn)) {
-			AddDebugLogLineN(logUPnP, wxString::FromUTF8(warn.c_str()));
-		}
-	}
-
-	std::vector<char> veventURL(
-		URLBase.length() + m_eventSubURL.length() + 1);
-	char *eventURL = &veventURL[0];
-	errcode = UpnpResolveURL(
-		URLBase.c_str(),
-		m_eventSubURL.c_str(),
-		eventURL);
-	if( errcode != UPNP_E_SUCCESS ) {
-		msg << "Error generating eventURL from " <<
-			"|" << URLBase << "|" <<
-			m_eventSubURL << "|.";
-		AddDebugLogLineN(logUPnP, msg);
-	} else {
-		std::string warn;
-		if (!AssignLanUrlOrClear("eventURL", eventURL, m_absEventSubURL, &warn)) {
-			AddDebugLogLineN(logUPnP, wxString::FromUTF8(warn.c_str()));
-		}
-	}
-
-	if (m_absSCPDURL.empty() || m_absControlURL.empty()) {
-		msg.str("");
-		msg << "Service '" << m_serviceType << "' missing LAN-safe endpoints. Ignoring.";
-		AddDebugLogLineC(logUPnP, msg);
-		return;
-	}
-
-	msg <<	"\n    Service:"             <<
-		"\n        serviceType: "    << m_serviceType <<
-		"\n        serviceId: "      << m_serviceId <<
-		"\n        SCPDURL: "        << m_SCPDURL <<
-		"\n        absSCPDURL: "     << m_absSCPDURL <<
-		"\n        controlURL: "     << m_controlURL <<
-		"\n        absControlURL: "  << m_absControlURL <<
-		"\n        eventSubURL: "    << m_eventSubURL <<
-		"\n        absEventSubURL: " << m_absEventSubURL;
-	AddDebugLogLineN(logUPnP, msg);
-	if (m_absEventSubURL.empty()) {
-		msg.str("");
-		msg << "Service '" << m_serviceType << "' missing LAN-safe event URL. Ignoring.";
-		AddDebugLogLineC(logUPnP, msg);
-		return;
-	}
-
-	if (m_serviceType == UPnP::Service::WAN_IP_Connection ||
-	    m_serviceType == UPnP::Service::WAN_PPP_Connection) {
-#if 0
-	    m_serviceType == UPnP::Service::WAN_PPP_Connection ||
-	    m_serviceType == UPnP::Service::WAN_Common_Interface_Config ||
-	    m_serviceType == UPnP::Service::Layer3_Forwarding) {
-#endif
-#if 0
-//#warning Delete this code on release.
-		if (!upnpControlPoint.WanServiceDetected()) {
-			// This condition can be used to suspend the parse
-			// of the XML tree.
-#endif
-//#warning Delete this code when m_WanService is no longer used.
-			const_cast<CUPnPControlPoint &>(upnpControlPoint).SetWanService(this);
-			// Log it
-			msg.str("");
-			msg << "WAN Service Detected: '" <<
-				m_serviceType << "'.";
-			AddDebugLogLineC(logUPnP, msg);
-			// Subscribe
-			const_cast<CUPnPControlPoint &>(upnpControlPoint).Subscribe(*this);
-#if 0
-//#warning Delete this code on release.
-		} else {
-			msg.str("");
-			msg << "WAN service detected again: '" <<
-				m_serviceType <<
-				"'. Will only use the first instance.";
-			AddDebugLogLineC(logUPnP, msg);
-		}
-#endif
-	} else {
-		msg.str("");
-		msg << "Uninteresting service detected: '" <<
-			m_serviceType << "'. Ignoring.";
-		AddDebugLogLineC(logUPnP, msg);
-	}
-}
-
-
-CUPnPService::~CUPnPService()
-{
-}
-
-
-bool CUPnPService::Execute(
-	const std::string &ActionName,
-	const std::vector<CUPnPArgumentValue> &ArgValue) const
-{
-	std::ostringstream msg;
-	if (m_absControlURL.empty() || m_absSCPDURL.empty()) {
-		msg << "Service '" << GetServiceType() << "' missing valid control/SCPD URLs, cannot execute action '" << ActionName << "'.";
-		AddDebugLogLineN(logUPnP, msg);
-		return false;
-	}
-	if (m_SCPD.get() == nullptr) {
-		msg << "Service without SCPD Document, cannot execute action '" << ActionName <<
-			"' for service '" << GetServiceType() << "'.";
-		AddDebugLogLineN(logUPnP, msg);
-		return false;
-	}
-	if (ActionName.empty()) {
-		msg << "Refusing to execute action with empty name for service '" << GetServiceType() << "'.";
-		AddDebugLogLineN(logUPnP, msg);
-		return false;
-	}
-	std::ostringstream msgAction("Sending action ");
-	// Check for correct action name
-	ActionList::const_iterator itAction =
-		m_SCPD->GetActionList().find(ActionName);
-	if (itAction == m_SCPD->GetActionList().end()) {
-		msg << "Invalid action name '" << ActionName <<
-			"' for service '" << GetServiceType() << "'.";
-		AddDebugLogLineN(logUPnP, msg);
-		return false;
-	}
-	msgAction << ActionName << "(";
-	bool firstTime = true;
-	// Check for correct Argument/Value pairs
-	const CUPnPAction &action = *(itAction->second);
-	for (unsigned int i = 0; i < ArgValue.size(); ++i) {
-		ArgumentList::const_iterator itArg =
-			action.GetArgumentList().find(ArgValue[i].GetArgument());
-		if (itArg == action.GetArgumentList().end()) {
-			msg << "Invalid argument name '" << ArgValue[i].GetArgument() <<
-				"' for action '" << action.GetName() <<
-				"' for service '" << GetServiceType() << "'.";
-			AddDebugLogLineN(logUPnP, msg);
-			return false;
-		}
-		const CUPnPArgument &argument = *(itArg->second);
-		if (tolower(argument.GetDirection()[0]) != 'i' ||
-		    tolower(argument.GetDirection()[1]) != 'n') {
-			msg << "Invalid direction for argument '" <<
-				ArgValue[i].GetArgument() <<
-				"' for action '" << action.GetName() <<
-				"' for service '" << GetServiceType() << "'.";
-			AddDebugLogLineN(logUPnP, msg);
-			return false;
-		}
-		const std::string relatedStateVariableName =
-			argument.GetRelatedStateVariable();
-		if (!relatedStateVariableName.empty()) {
-			ServiceStateTable::const_iterator itSVT =
-				m_SCPD->GetServiceStateTable().
-				find(relatedStateVariableName);
-			if (itSVT == m_SCPD->GetServiceStateTable().end()) {
-				msg << "Inconsistent Service State Table, did not find '" <<
-					relatedStateVariableName <<
-					"' for argument '" << argument.GetName() <<
-					"' for action '" << action.GetName() <<
-					"' for service '" << GetServiceType() << "'.";
-				AddDebugLogLineN(logUPnP, msg);
-				return false;
-			}
-			const CUPnPStateVariable &stateVariable = *(itSVT->second);
-			if (	!stateVariable.GetAllowedValueList().empty() &&
-				stateVariable.GetAllowedValueList().find(ArgValue[i].GetValue()) ==
-					stateVariable.GetAllowedValueList().end()) {
-				msg << "Value not allowed '" << ArgValue[i].GetValue() <<
-					"' for state variable '" << relatedStateVariableName <<
-					"' for argument '" << argument.GetName() <<
-					"' for action '" << action.GetName() <<
-					"' for service '" << GetServiceType() << "'.";
-				AddDebugLogLineN(logUPnP, msg);
-				return false;
-			}
-		}
-		if (firstTime) {
-			firstTime = false;
-		} else {
-			msgAction << ", ";
-		}
-		msgAction <<
-			ArgValue[i].GetArgument() <<
-			"='" <<
-			ArgValue[i].GetValue() <<
-			"'";
-	}
-	msgAction << ")";
-	AddDebugLogLineN(logUPnP, msgAction);
-	// Everything is ok, make the action
-	IXML_Document *ActionDoc = nullptr;
-	if (!ArgValue.empty()) {
-		for (unsigned int i = 0; i < ArgValue.size(); ++i) {
-			int ret = UpnpAddToAction(
-				&ActionDoc,
-				action.GetName().c_str(),
-				GetServiceType().c_str(),
-				ArgValue[i].GetArgument().c_str(),
-				ArgValue[i].GetValue().c_str());
-			if (ret != UPNP_E_SUCCESS) {
-				UPnP::ProcessErrorMessage(
-					"UpnpAddToAction", ret, nullptr, nullptr);
-				return false;
-			}
-		}
-	} else {
-		ActionDoc = UpnpMakeAction(
-			action.GetName().c_str(),
-			GetServiceType().c_str(),
-			0, nullptr);
-		if (!ActionDoc) {
-			msg << "Error: UpnpMakeAction returned nullptr.";
-			AddDebugLogLineN(logUPnP, msg);
-			return false;
-		}
-	}
-#if 0
-	// Send the action asynchronously
-	UpnpSendActionAsync(
-		m_UPnPControlPoint.GetUPnPClientHandle(),
-		GetAbsControlURL().c_str(),
-		GetServiceType().c_str(),
-		nullptr, ActionDoc,
-		static_cast<Upnp_FunPtr>(&CUPnPControlPoint::Callback),
-		nullptr);
-	return true;
-#endif
-
-	// Send the action synchronously
-	IXML_Document *RespDoc = nullptr;
-	int ret = UpnpSendAction(
-		m_UPnPControlPoint.GetUPnPClientHandle(),
-		GetAbsControlURL().c_str(),
-		GetServiceType().c_str(),
-		nullptr, ActionDoc, &RespDoc);
-	if (ret != UPNP_E_SUCCESS) {
-		UPnP::ProcessErrorMessage(
-			"UpnpSendAction", ret, nullptr, RespDoc);
-		IXML::Document::Free(ActionDoc);
-		IXML::Document::Free(RespDoc);
-		return false;
-	}
-	IXML::Document::Free(ActionDoc);
-
-	// Check the response document
-	if (RespDoc != nullptr) {
-		UPnP::ProcessActionResponse(RespDoc, action.GetName());
-	}
-
-	// Free the response document
-	IXML::Document::Free(RespDoc);
-
-	return true;
-}
-
-
-const std::string CUPnPService::GetStateVariable(
-	const std::string &stateVariableName) const
-{
-	std::ostringstream msg;
-	if (m_absControlURL.empty() || m_absSCPDURL.empty()) {
-		msg << "Cannot query state variable '" << stateVariableName << "' without valid control/SCPD URLs.";
-		AddDebugLogLineN(logUPnP, msg);
-		return stdEmptyString;
-	}
-	if (stateVariableName.empty()) {
-		msg << "Cannot query unnamed state variable for service '" << GetServiceType() << "'.";
-		AddDebugLogLineN(logUPnP, msg);
-		return stdEmptyString;
-	}
-	DOMString StVarVal;
-	int ret = UpnpGetServiceVarStatus(
-		m_UPnPControlPoint.GetUPnPClientHandle(),
-		GetAbsControlURL().c_str(),
-		stateVariableName.c_str(),
-		&StVarVal);
-	if (ret != UPNP_E_SUCCESS) {
-		msg << "GetStateVariable(\"" <<
-			stateVariableName <<
-			"\"): in a call to UpnpGetServiceVarStatus";
-		UPnP::ProcessErrorMessage(
-			msg.str(), ret, StVarVal, nullptr);
-		return stdEmptyString;
-	}
-	msg << "GetStateVariable: " <<
-		stateVariableName <<
-		"='" <<
-		StVarVal <<
-		"'.";
-	AddDebugLogLineN(logUPnP, msg);
-	return StVarVal;
-}
-
-
-CUPnPDevice::CUPnPDevice(
-	const CUPnPControlPoint &upnpControlPoint,
-	IXML_Element *device,
-	const std::string &URLBase)
-:
-m_DeviceList(upnpControlPoint, device, URLBase),
-m_ServiceList(upnpControlPoint, device, URLBase),
-m_deviceType       (IXML::Element::GetChildValueByTag(device, "deviceType")),
-m_friendlyName     (IXML::Element::GetChildValueByTag(device, "friendlyName")),
-m_manufacturer     (IXML::Element::GetChildValueByTag(device, "manufacturer")),
-m_manufacturerURL  (IXML::Element::GetChildValueByTag(device, "manufacturerURL")),
-m_modelDescription (IXML::Element::GetChildValueByTag(device, "modelDescription")),
-m_modelName        (IXML::Element::GetChildValueByTag(device, "modelName")),
-m_modelNumber      (IXML::Element::GetChildValueByTag(device, "modelNumber")),
-m_modelURL         (IXML::Element::GetChildValueByTag(device, "modelURL")),
-m_serialNumber     (IXML::Element::GetChildValueByTag(device, "serialNumber")),
-m_UDN              (IXML::Element::GetChildValueByTag(device, "UDN")),
-m_UPC              (IXML::Element::GetChildValueByTag(device, "UPC")),
-m_presentationURL  (IXML::Element::GetChildValueByTag(device, "presentationURL"))
-{
-	std::ostringstream msg;
-	int presURLlen = strlen(URLBase.c_str()) +
-		strlen(m_presentationURL.c_str()) + 2;
-	std::vector<char> vpresURL(presURLlen);
-	char* presURL = &vpresURL[0];
-	int errcode = UpnpResolveURL(
-		URLBase.c_str(),
-		m_presentationURL.c_str(),
-		presURL);
-	if (errcode != UPNP_E_SUCCESS) {
-		msg << "Error generating presentationURL from " <<
-			"|" << URLBase << "|" <<
-			m_presentationURL << "|.";
-		AddDebugLogLineN(logUPnP, msg);
-		m_presentationURL.clear();
-	} else {
-		std::string warn;
-		if (!AssignLanUrlOrClear("presentationURL", presURL, m_presentationURL, &warn)) {
-			AddDebugLogLineN(logUPnP, wxString::FromUTF8(warn.c_str()));
-		}
-	}
-
-	msg.str("");
-	msg <<	"\n    Device: "                <<
-		"\n        friendlyName: "      << m_friendlyName <<
-		"\n        deviceType: "        << m_deviceType <<
-		"\n        manufacturer: "      << m_manufacturer <<
-		"\n        manufacturerURL: "   << m_manufacturerURL <<
-		"\n        modelDescription: "  << m_modelDescription <<
-		"\n        modelName: "         << m_modelName <<
-		"\n        modelNumber: "       << m_modelNumber <<
-		"\n        modelURL: "          << m_modelURL <<
-		"\n        serialNumber: "      << m_serialNumber <<
-		"\n        UDN: "               << m_UDN <<
-		"\n        UPC: "               << m_UPC <<
-		"\n        presentationURL: "   << m_presentationURL;
-	AddDebugLogLineN(logUPnP, msg);
-}
-
-
-CUPnPRootDevice::CUPnPRootDevice(
-	const CUPnPControlPoint &upnpControlPoint,
-	IXML_Element *rootDevice,
-	const std::string &OriginalURLBase,
-	const std::string &FixedURLBase,
-	const char *location,
-	int expires)
-:
-CUPnPDevice(upnpControlPoint, rootDevice, FixedURLBase),
-m_URLBase(OriginalURLBase),
-m_location(location),
-m_expires(expires)
-{
-	std::ostringstream msg;
-	msg <<
-		"\n    Root Device: "       <<
-		"\n        URLBase: "       << m_URLBase <<
-		"\n        Fixed URLBase: " << FixedURLBase <<
-		"\n        location: "      << m_location <<
-		"\n        expires: "       << m_expires;
-	AddDebugLogLineN(logUPnP, msg);
-}
-
-
-CUPnPControlPoint *CUPnPControlPoint::s_CtrlPoint = nullptr;
-
 
 CUPnPControlPoint::CUPnPControlPoint(unsigned short udpPort)
 :
-m_UPnPClientHandle(),
-m_RootDeviceMap(),
-m_ServiceMap(),
-m_ActivePortMappingsMap(),
-m_RootDeviceListMutex(),
-m_IGWDeviceDetected(false),
-m_WanService(nullptr),
-m_mappingRetryCount(0)
+CUPnPControlPoint(udpPort, std::unique_ptr<IUPnPClient>())
 {
-	// Pointer to self
-	s_CtrlPoint = this;
-	// Null string at first
-	std::ostringstream msg;
-
-	// Declare those here to avoid 
-	// "jump to label ‘error’ [-fpermissive] crosses initialization
-	// of ‘char* ipAddress’"
-	unsigned short port;
-	char *ipAddress;
-
-	// Start UPnP
-	int ret;
-	ret = UpnpInit2(0, udpPort);
-	if (ret != UPNP_E_SUCCESS) {
-		msg << "error(UpnpInit2): Error code ";
-		goto error;
-	}
-	port = UpnpGetServerPort();
-	ipAddress = UpnpGetServerIpAddress();
-	msg << "bound to " << ipAddress << ":" <<
-		port << ".";
-	AddDebugLogLineN(logUPnP, msg);
-	msg.str("");
-	ret = UpnpRegisterClient(
-		static_cast<Upnp_FunPtr>(&CUPnPControlPoint::Callback),
-		&m_UPnPClientHandle,
-		&m_UPnPClientHandle);
-	if (ret != UPNP_E_SUCCESS) {
-		msg << "error(UpnpRegisterClient): Error registering callback: ";
-		goto error;
-	}
-
-	// We could ask for just the right device here. If the root device
-	// contains the device we want, it will respond with the full XML doc,
-	// including the root device and every sub-device it has.
-	//
-	// But let's find out what we have in our network by calling UPnP::ROOT_DEVICE.
-	//
-	// We should not search twice, because this will produce two
-	// UPNP_DISCOVERY_SEARCH_TIMEOUT events, and we might end with problems
-	// on the mutex.
-	ret = UpnpSearchAsync(m_UPnPClientHandle, 3, UPnP::ROOT_DEVICE.c_str(), nullptr);
-	//ret = UpnpSearchAsync(m_UPnPClientHandle, 3, UPnP::Device::IGW.c_str(), this);
-	//ret = UpnpSearchAsync(m_UPnPClientHandle, 3, UPnP::Device::LAN.c_str(), this);
-	//ret = UpnpSearchAsync(m_UPnPClientHandle, 3, UPnP::Device::WAN_Connection.c_str(), this);
-	if (ret != UPNP_E_SUCCESS) {
-		msg << "error(UpnpSearchAsync): Error sending search request: ";
-		goto error;
-	}
-
-	// Wait for the UPnP initialization to complete.
-	{
-		// Lock the search timeout mutex
-		m_WaitForSearchTimeoutMutex.Lock();
-
-		// Lock it again, so that we block. Unlocking will only happen
-		// when the UPNP_DISCOVERY_SEARCH_TIMEOUT event occurs at the
-		// callback.
-		CUPnPMutexLocker lock(m_WaitForSearchTimeoutMutex);
-	}
-	return;
-
-	// Error processing
-error:
-	UpnpFinish();
-	msg << ret << ": " << UpnpGetErrorMessage(ret) << ".";
-	throw CUPnPException(msg);
 }
 
 
-CUPnPControlPoint::~CUPnPControlPoint()
+CUPnPControlPoint::CUPnPControlPoint(unsigned short /*udpPort*/, std::unique_ptr<IUPnPClient> client)
+:
+m_client(client ? std::move(client) : std::unique_ptr<IUPnPClient>(new CMiniUPnPClient())),
+m_discoveryInfo(),
+m_discoverySucceeded(false),
+m_mappingRetryCount(0),
+m_lastOperationError(),
+m_lastFailureStage(UPNP_STAGE_NONE),
+m_lastDiscoveredDevices(0),
+m_lastFilteredDevices(0)
 {
-	for(	RootDeviceMap::iterator it = m_RootDeviceMap.begin();
-		it != m_RootDeviceMap.end();
-		++it) {
-		delete it->second;
+	wxString ignoredError;
+	EnsureDiscovery(ignoredError);
+}
+
+
+CUPnPControlPoint::~CUPnPControlPoint() = default;
+
+
+bool CUPnPControlPoint::EnsureDiscovery(wxString& error)
+{
+	if (m_discoverySucceeded) {
+		return true;
 	}
-	// Remove all first
-	// RemoveAll();
-	UpnpUnRegisterClient(m_UPnPClientHandle);
-	UpnpFinish();
+
+	m_lastFailureStage = UPNP_STAGE_NONE;
+	m_lastDiscoveredDevices = 0;
+	m_lastFilteredDevices = 0;
+
+	CUPnPDiscoveryInfo info;
+	if (!m_client->Discover(info, error)) {
+		m_lastFailureStage = m_client->GetFailureStage();
+		m_lastDiscoveredDevices = m_client->GetDiscoveredDeviceCount();
+		m_lastFilteredDevices = m_client->GetFilteredDeviceCount();
+		m_discoveryInfo = CUPnPDiscoveryInfo();
+		m_discoveryInfo.failureStage = m_lastFailureStage;
+		m_discoveryInfo.discoveredDevices = m_lastDiscoveredDevices;
+		m_discoveryInfo.filteredDevices = m_lastFilteredDevices;
+		return false;
+	}
+	m_discoveryInfo = info;
+	m_discoverySucceeded = true;
+	m_lastFailureStage = info.failureStage;
+	m_lastDiscoveredDevices = info.discoveredDevices;
+	m_lastFilteredDevices = info.filteredDevices;
+	return true;
 }
 
 
 bool CUPnPControlPoint::AddPortMappings(
-	std::vector<CUPnPPortMapping> &upnpPortMapping)
+	std::vector<CUPnPPortMapping> &upnpPortMapping,
+	std::vector<CUPnPPersistedMapping> *mapped)
 {
-	std::ostringstream msg;
-	if (!WanServiceDetected()) {
-		msg <<  "UPnP Error: "
-			"CUPnPControlPoint::AddPortMapping: "
-			"WAN Service not detected.";
-		AddDebugLogLineC(logUPnP, msg);
+	m_lastOperationError.Clear();
+	m_lastFailureStage = UPNP_STAGE_NONE;
+	wxString discoveryError;
+	if (!EnsureDiscovery(discoveryError)) {
+		m_lastOperationError = discoveryError;
+		if (!discoveryError.IsEmpty()) {
+			AddDebugLogLineC(logUPnP, discoveryError);
+		}
 		return false;
 	}
 
-	int n = upnpPortMapping.size();
-	bool ok = false;
-
-	// Reset retry count at start of mapping attempt
 	ResetMappingRetryCount();
+	if (mapped) {
+		mapped->clear();
+	}
 
-	// Check the number of port mappings before
-	std::istringstream PortMappingNumberOfEntries(
-		m_WanService->GetStateVariable(
-			"PortMappingNumberOfEntries"));
-	unsigned long oldNumberOfEntries;
-	PortMappingNumberOfEntries >> oldNumberOfEntries;
+	size_t expectedEnabled = 0;
+	size_t mappedCount = 0;
 
-	// Add the enabled port mappings with retry logic
-	for (int i = 0; i < n; ++i) {
-		if (upnpPortMapping[i].getEnabled() == "1") {
-			// Add the mapping to the control point
-			// active mappings list
-			m_ActivePortMappingsMap[upnpPortMapping[i].getKey()] =
-				upnpPortMapping[i];
+	for (std::vector<CUPnPPortMapping>::iterator it = upnpPortMapping.begin(); it != upnpPortMapping.end(); ++it) {
+		if (it->getEnabled() != "1") {
+			continue;
+		}
+		++expectedEnabled;
 
-			// Add the port mapping with retry
-			bool mappingSuccess = PrivateAddPortMapping(upnpPortMapping[i]);
-			while (!mappingSuccess && HasMappingRetriesLeft()) {
-				// Exponential backoff: 500ms, 1000ms, 2000ms...
-				uint32_t delay = m_initialRetryDelayMs * (1u << GetMappingRetryCount());
-				msg.str("");
-				msg << "UPnP: Port mapping attempt " << (GetMappingRetryCount() + 1)
-					<< " failed, retrying in " << delay << "ms...";
-				AddDebugLogLineC(logUPnP, msg);
-
-				// Note: In practice, wxSleep or event-based delay would be used here
-				// For now, we just log and retry immediately (sync retry)
-				IncrementMappingRetryCount();
-				mappingSuccess = PrivateAddPortMapping(upnpPortMapping[i]);
+		bool mappingSuccess = false;
+		wxString lastError;
+		do {
+			mappingSuccess = m_client->AddMapping(*it, lastError);
+			if (mappingSuccess) {
+				break;
 			}
+			if (!HasMappingRetriesLeft()) {
+				break;
+			}
+			uint32_t delay = m_initialRetryDelayMs * (1u << GetMappingRetryCount());
+			AddDebugLogLineC(logUPnP, wxString::Format(wxT("UPnP: reintentando mapeo de puerto %s en %u ms"), wxString::FromUTF8(it->getPort().c_str()), delay));
+			wxMilliSleep(delay);
+			IncrementMappingRetryCount();
+		} while (!mappingSuccess && HasMappingRetriesLeft());
 
-			if (!mappingSuccess) {
-				msg.str("");
-				msg << "UPnP Error: Failed to add port mapping after "
-					<< m_defaultMaxRetries << " attempts for port "
-					<< upnpPortMapping[i].getPort();
-				AddDebugLogLineC(logUPnP, msg);
-			} else if (GetMappingRetryCount() > 0) {
-				msg.str("");
-				msg << "UPnP: Port mapping succeeded after "
-					<< GetMappingRetryCount() << " retries for port "
-					<< upnpPortMapping[i].getPort();
-				AddDebugLogLineC(logUPnP, msg);
+		if (mappingSuccess) {
+			++mappedCount;
+			if (mapped) {
+				const uint16 externalPort = m_client->GetLastMappedExternalPort();
+				mapped->push_back(ToPersistedMapping(*it, externalPort));
+			}
+			if (GetMappingRetryCount() > 0) {
+				AddDebugLogLineN(logUPnP, wxString::Format(wxT("UPnP: mapeo de puerto %s succeeded after %d retries"), wxString::FromUTF8(it->getPort().c_str()), GetMappingRetryCount()));
+			}
+		} else {
+			if (m_lastOperationError.IsEmpty()) {
+				m_lastOperationError = lastError;
+			}
+			if (!lastError.IsEmpty()) {
+				AddDebugLogLineC(logUPnP, lastError);
+			}
+			if (m_lastFailureStage == UPNP_STAGE_NONE) {
+				m_lastFailureStage = m_client->GetFailureStage();
 			}
 		}
 	}
 
-	// Test some variables, this is deprecated, might not work
-	// with some routers
-	m_WanService->GetStateVariable("ConnectionType");
-	m_WanService->GetStateVariable("PossibleConnectionTypes");
-	m_WanService->GetStateVariable("ConnectionStatus");
-	m_WanService->GetStateVariable("Uptime");
-	m_WanService->GetStateVariable("LastConnectionError");
-	m_WanService->GetStateVariable("RSIPAvailable");
-	m_WanService->GetStateVariable("NATEnabled");
-	m_WanService->GetStateVariable("ExternalIPAddress");
-	m_WanService->GetStateVariable("PortMappingNumberOfEntries");
-	m_WanService->GetStateVariable("PortMappingLeaseDuration");
-
-	// Just for testing
-	std::vector<CUPnPArgumentValue> argval;
-	argval.resize(0);
-	m_WanService->Execute("GetStatusInfo", argval);
-
-#if 0
-	// These do not work. Their value must be requested for a
-	// specific port mapping.
-	m_WanService->GetStateVariable("PortMappingEnabled");
-	m_WanService->GetStateVariable("RemoteHost");
-	m_WanService->GetStateVariable("ExternalPort");
-	m_WanService->GetStateVariable("InternalPort");
-	m_WanService->GetStateVariable("PortMappingProtocol");
-	m_WanService->GetStateVariable("InternalClient");
-	m_WanService->GetStateVariable("PortMappingDescription");
-#endif
-
-	// Debug only
-	msg.str("");
-	msg << "CUPnPControlPoint::AddPortMappings: "
-		"m_ActivePortMappingsMap.size() == " <<
-		m_ActivePortMappingsMap.size();
-	AddDebugLogLineN(logUPnP, msg);
-
-	// Not very good, must find a better test
-	PortMappingNumberOfEntries.str(
-		m_WanService->GetStateVariable(
-			"PortMappingNumberOfEntries"));
-	unsigned long newNumberOfEntries;
-	PortMappingNumberOfEntries >> newNumberOfEntries;
-	ok = newNumberOfEntries - oldNumberOfEntries == 4;
-
-	return ok;
-}
-
-
-void CUPnPControlPoint::RefreshPortMappings()
-{
-	for (	PortMappingMap::iterator it = m_ActivePortMappingsMap.begin();
-		it != m_ActivePortMappingsMap.end();
-		++it) {
-		PrivateAddPortMapping(it->second);
+	if (expectedEnabled == 0) {
+		return false;
 	}
 
-	// For testing
-	m_WanService->GetStateVariable("PortMappingNumberOfEntries");
-}
-
-
-bool CUPnPControlPoint::PrivateAddPortMapping(
-	CUPnPPortMapping &upnpPortMapping)
-{
-	// Get an IP address. The UPnP server one must do.
-	std::string ipAddress(UpnpGetServerIpAddress());
-
-	// Start building the action
-	std::string actionName("AddPortMapping");
-	std::vector<CUPnPArgumentValue> argval(8);
-
-	// Action parameters
-	argval[0].SetArgument("NewRemoteHost");
-	argval[0].SetValue("");
-	argval[1].SetArgument("NewExternalPort");
-	argval[1].SetValue(upnpPortMapping.getPort());
-	argval[2].SetArgument("NewProtocol");
-	argval[2].SetValue(upnpPortMapping.getProtocol());
-	argval[3].SetArgument("NewInternalPort");
-	argval[3].SetValue(upnpPortMapping.getPort());
-	argval[4].SetArgument("NewInternalClient");
-	argval[4].SetValue(ipAddress);
-	argval[5].SetArgument("NewEnabled");
-	argval[5].SetValue("1");
-	argval[6].SetArgument("NewPortMappingDescription");
-	argval[6].SetValue(upnpPortMapping.getDescription());
-	argval[7].SetArgument("NewLeaseDuration");
-	argval[7].SetValue("0");
-
-	// Execute
-	bool ret = true;
-	for (ServiceMap::iterator it = m_ServiceMap.begin();
-	     it != m_ServiceMap.end(); ++it) {
-		ret &= it->second->Execute(actionName, argval);
-	}
-
-	return ret;
+	return mappedCount == expectedEnabled;
 }
 
 
 bool CUPnPControlPoint::DeletePortMappings(
 	std::vector<CUPnPPortMapping> &upnpPortMapping)
 {
-	std::ostringstream msg;
-	if (!WanServiceDetected()) {
-		msg <<  "UPnP Error: "
-			"CUPnPControlPoint::DeletePortMapping: "
-			"WAN Service not detected.";
-		AddDebugLogLineC(logUPnP, msg);
+	m_lastOperationError.Clear();
+	wxString discoveryError;
+	if (!EnsureDiscovery(discoveryError)) {
+		m_lastOperationError = discoveryError;
 		return false;
 	}
 
-	int n = upnpPortMapping.size();
-	bool ok = false;
+	bool allDeleted = true;
+	for (std::vector<CUPnPPortMapping>::iterator it = upnpPortMapping.begin(); it != upnpPortMapping.end(); ++it) {
+		if (it->getEnabled() != "1") {
+			continue;
+		}
 
-	// Check the number of port mappings before
-	std::istringstream PortMappingNumberOfEntries(
-		m_WanService->GetStateVariable(
-			"PortMappingNumberOfEntries"));
-	unsigned long oldNumberOfEntries;
-	PortMappingNumberOfEntries >> oldNumberOfEntries;
-
-	// Delete the enabled port mappings
-	for (int i = 0; i < n; ++i) {
-		if (upnpPortMapping[i].getEnabled() == "1") {
-			// Delete the mapping from the control point
-			// active mappings list
-			PortMappingMap::iterator it =
-				m_ActivePortMappingsMap.find(
-					upnpPortMapping[i].getKey());
-			if (it != m_ActivePortMappingsMap.end()) {
-				m_ActivePortMappingsMap.erase(it);
-			} else {
-				msg <<  "UPnP Error: "
-					"CUPnPControlPoint::DeletePortMapping: "
-					"Mapping was not found in the active "
-					"mapping map.";
-				AddDebugLogLineC(logUPnP, msg);
+		wxString lastError;
+		if (!m_client->DeleteMapping(*it, lastError)) {
+			allDeleted = false;
+			if (m_lastOperationError.IsEmpty()) {
+				m_lastOperationError = lastError;
 			}
-
-			// Delete the port mapping
-			PrivateDeletePortMapping(upnpPortMapping[i]);
+			if (!lastError.IsEmpty()) {
+				AddDebugLogLineC(logUPnP, lastError);
+			}
 		}
 	}
 
-	// Debug only
-	msg.str("");
-	msg << "CUPnPControlPoint::DeletePortMappings: "
-		"m_ActivePortMappingsMap.size() == " <<
-		m_ActivePortMappingsMap.size();
-	AddDebugLogLineN(logUPnP, msg);
-
-	// Not very good, must find a better test
-	PortMappingNumberOfEntries.str(
-		m_WanService->GetStateVariable(
-			"PortMappingNumberOfEntries"));
-	unsigned long newNumberOfEntries;
-	PortMappingNumberOfEntries >> newNumberOfEntries;
-	ok = oldNumberOfEntries - newNumberOfEntries == 4;
-
-	return ok;
+	return allDeleted;
 }
 
 
-bool CUPnPControlPoint::PrivateDeletePortMapping(
-	CUPnPPortMapping &upnpPortMapping)
+CUPnPOperationReport CUPnPControlPoint::ExecuteMappings(
+	const std::vector<CUPnPPortMapping> &upnpPortMapping,
+	const wxString& scope,
+	const CUPnPLastResult& lastResult,
+	bool forceRetry)
 {
-	// Start building the action
-	std::string actionName("DeletePortMapping");
-	std::vector<CUPnPArgumentValue> argval(3);
+	CUPnPOperationReport report;
+	report.scope = scope;
+	report.status = UPNP_LAST_UNKNOWN;
+	report.timestampUtc = wxGetUTCTimeMillis().GetValue();
+	report.retryCount = 0;
+	report.suppressedByPolicy = false;
+	report.suppressedUntilSessionEnd = false;
+	report.failureStage = UPNP_STAGE_NONE;
+	report.discoveredDevices = m_lastDiscoveredDevices;
+	report.filteredDevices = m_lastFilteredDevices;
+	report.requestedMappings = ToPersistedMappings(upnpPortMapping);
 
-	// Action parameters
-	argval[0].SetArgument("NewRemoteHost");
-	argval[0].SetValue("");
-	argval[1].SetArgument("NewExternalPort");
-	argval[1].SetValue(upnpPortMapping.getPort());
-	argval[2].SetArgument("NewProtocol");
-	argval[2].SetValue(upnpPortMapping.getProtocol());
-
-	// Execute
-	bool ret = true;
-	for (ServiceMap::iterator it = m_ServiceMap.begin();
-	     it != m_ServiceMap.end(); ++it) {
-		ret &= it->second->Execute(actionName, argval);
+	wxString suppressionReason;
+	bool suppressedUntilEnd = false;
+	if (ShouldSuppressUPnPRetry(lastResult, report.requestedMappings, report.timestampUtc, forceRetry, suppressedUntilEnd, suppressionReason)) {
+		report.status = UPNP_LAST_SUPPRESSED;
+		report.lastError = suppressionReason;
+		report.suppressedByPolicy = true;
+		report.suppressedUntilSessionEnd = suppressedUntilEnd;
+		report.failureStage = lastResult.failureStage;
+		return report;
 	}
 
-	return ret;
+	std::vector<CUPnPPortMapping> mutableMappings = upnpPortMapping;
+	std::vector<CUPnPPersistedMapping> mapped;
+	const bool allMapped = AddPortMappings(mutableMappings, &mapped);
+	report.mappedMappings.swap(mapped);
+	report.retryCount = GetMappingRetryCount();
+	report.suppressedUntilSessionEnd = !allMapped;
+	report.failureStage = m_lastFailureStage;
+	report.discoveredDevices = m_lastDiscoveredDevices;
+	report.filteredDevices = m_lastFilteredDevices;
+
+	CaptureRouterIdentity(report.routerId, report.routerName);
+	report.adapterId = m_discoveryInfo.adapterId;
+
+	if (allMapped) {
+		report.status = UPNP_LAST_OK;
+	} else {
+		report.status = UPNP_LAST_FAIL;
+		report.lastError = m_lastOperationError;
+		if (report.lastError.IsEmpty()) {
+			report.lastError = wxT("UPnP no pudo abrir todos los puertos solicitados.");
+		}
+	}
+
+	return report;
 }
 
 
-// This function is static
-#if UPNP_VERSION >= 10800
-int CUPnPControlPoint::Callback(Upnp_EventType_e EventType, const void *Event, void * /*Cookie*/)
-#else
-int CUPnPControlPoint::Callback(Upnp_EventType EventType, void *Event, void * /*Cookie*/)
-#endif
+void CUPnPControlPoint::CaptureRouterIdentity(wxString& routerId, wxString& routerName) const
 {
-	std::ostringstream msg;
-	std::ostringstream msg2;
-	// Somehow, this is unreliable. UPNP_DISCOVERY_ADVERTISEMENT_ALIVE events
-	// happen with a wrong cookie and... boom!
-	// CUPnPControlPoint *upnpCP = static_cast<CUPnPControlPoint *>(Cookie);
-	CUPnPControlPoint *upnpCP = CUPnPControlPoint::s_CtrlPoint;
+	routerId = m_discoveryInfo.routerId;
+	routerName = m_discoveryInfo.routerName;
+}
 
-	//fprintf(stderr, "Callback: %d, Cookie: %p\n", EventType, Cookie);
-	switch (EventType) {
-	case UPNP_DISCOVERY_ADVERTISEMENT_ALIVE:
-		//fprintf(stderr, "Callback: UPNP_DISCOVERY_ADVERTISEMENT_ALIVE\n");
-		msg << "error(UPNP_DISCOVERY_ADVERTISEMENT_ALIVE): ";
-		msg2<< "UPNP_DISCOVERY_ADVERTISEMENT_ALIVE: ";
-		goto upnpDiscovery;
-	case UPNP_DISCOVERY_SEARCH_RESULT: {
-		//fprintf(stderr, "Callback: UPNP_DISCOVERY_SEARCH_RESULT\n");
-		msg << "error(UPNP_DISCOVERY_SEARCH_RESULT): ";
-		msg2<< "UPNP_DISCOVERY_SEARCH_RESULT: ";
-		// UPnP Discovery
-upnpDiscovery:
-#if UPNP_VERSION >= 10800
-		UpnpDiscovery *d_event = (UpnpDiscovery *)Event;
-#else
-		struct Upnp_Discovery *d_event = (struct Upnp_Discovery *)Event;
-#endif
-		IXML_Document *doc = nullptr;
-#if UPNP_VERSION >= 10800
-		int errCode = UpnpDiscovery_get_ErrCode(d_event);
-		if (errCode != UPNP_E_SUCCESS) {
-			msg << UpnpGetErrorMessage(errCode) << ".";
-#else
-		int ret;
-		if (d_event->ErrCode != UPNP_E_SUCCESS) {
-			msg << UpnpGetErrorMessage(d_event->ErrCode) << ".";
-#endif
-			AddDebugLogLineC(logUPnP, msg);
-		}
-		// Get the XML tree device description in doc
-#if UPNP_VERSION >= 10800
-		const char *location = UpnpDiscovery_get_Location_cstr(d_event);
-		if (location == nullptr || !IsSafeLanUrl(location)) {
-			msg << "Rejecting UPnP device from non-LAN location: "
-				<< (location ? location : "<null>");
-			AddDebugLogLineC(logUPnP, msg);
-			break;
-		}
-		int ret = UpnpDownloadXmlDoc(location, &doc);
-#else
-		ret = UpnpDownloadXmlDoc(d_event->Location, &doc);
-#endif
-		if (ret != UPNP_E_SUCCESS) {
-			msg << "Error retrieving device description from " <<
-#if UPNP_VERSION >= 10800
-				location << ": " <<
-#else
-				d_event->Location << ": " <<
-#endif
-				UpnpGetErrorMessage(ret) <<
-				"(" << ret << ").";
-			AddDebugLogLineC(logUPnP, msg);
-		} else {
-			msg2 << "Retrieving device description from " <<
-#if UPNP_VERSION >= 10800
-				location << ".";
-#else
-				d_event->Location << ".";
-#endif
-			AddDebugLogLineN(logUPnP, msg2);
-		}
-		if (doc) {
-			// Get the root node
-			IXML_Element *root = IXML::Document::GetRootElement(doc);
-			// Extract the URLBase
-		const std::string urlBase = IXML::Element::GetChildValueByTag(root, "URLBase");
-		if (!urlBase.empty() && !IsSafeLanUrl(urlBase)) {
-			msg.str("Rejecting UPnP device due to non-LAN URLBase: ");
-			msg << urlBase;
-			AddDebugLogLineC(logUPnP, msg);
-			IXML::Document::Free(doc);
-			break;
-		}
-			// Get the root device
-			IXML_Element *rootDevice = IXML::Element::GetFirstChildByTag(root, "device");
-			// Extract the deviceType
-			std::string devType(IXML::Element::GetChildValueByTag(rootDevice, "deviceType"));
-			// Only add device if it is an InternetGatewayDevice
-			if (stdStringIsEqualCI(devType, UPnP::Device::IGW)) {
-				// This condition can be used to auto-detect
-				// the UPnP device we are interested in.
-				// Obs.: Don't block the entry here on this
-				// condition! There may be more than one device,
-				// and the first that enters may not be the one
-				// we are interested in!
-				upnpCP->SetIGWDeviceDetected(true);
-				// Log it if not UPNP_DISCOVERY_ADVERTISEMENT_ALIVE,
-				// we don't want to spam our logs.
-				if (EventType != UPNP_DISCOVERY_ADVERTISEMENT_ALIVE) {
-					msg.str("Internet Gateway Device Detected.");
-					AddDebugLogLineC(logUPnP, msg);
-				}
-				// Add the root device to our list
-#if UPNP_VERSION >= 10800
-				int expires = UpnpDiscovery_get_Expires(d_event);
-				upnpCP->AddRootDevice(rootDevice, urlBase,
-					location, expires);
-#else
-				upnpCP->AddRootDevice(rootDevice, urlBase,
-					d_event->Location, d_event->Expires);
-#endif
-			}
-			// Free the XML doc tree
-			IXML::Document::Free(doc);
-		}
-		break;
-	}
-	case UPNP_DISCOVERY_SEARCH_TIMEOUT: {
-		//fprintf(stderr, "Callback: UPNP_DISCOVERY_SEARCH_TIMEOUT\n");
-		// Search timeout
-		msg << "UPNP_DISCOVERY_SEARCH_TIMEOUT.";
-		AddDebugLogLineN(logUPnP, msg);
 
-		// Unlock the search timeout mutex
-		upnpCP->m_WaitForSearchTimeoutMutex.Unlock();
+CUPnPLastResult ToUPnPLastResult(const CUPnPOperationReport& report)
+{
+	CUPnPLastResult result;
+	result.scope = report.scope;
+	result.status = report.status;
+	result.timestampUtc = report.timestampUtc;
+	result.routerId = report.routerId;
+	result.routerName = report.routerName;
+	result.adapterId = report.adapterId;
+	result.requested = report.requestedMappings;
+	result.mapped = report.mappedMappings;
+	result.retryCount = report.retryCount;
+	result.lastError = report.lastError;
+	result.failureStage = report.failureStage;
+	result.suppressedUntilSessionEnd = report.suppressedUntilSessionEnd;
+	return result;
+}
 
-		break;
-	}
-	case UPNP_DISCOVERY_ADVERTISEMENT_BYEBYE: {
-		//fprintf(stderr, "Callback: UPNP_DISCOVERY_ADVERTISEMENT_BYEBYE\n");
-		// UPnP Device Removed
-#if UPNP_VERSION >= 10800
-		UpnpDiscovery *dab_event = (UpnpDiscovery *)Event;
-		int errCode = UpnpDiscovery_get_ErrCode(dab_event);
-		if (errCode != UPNP_E_SUCCESS) {
-#else
-		struct Upnp_Discovery *dab_event = (struct Upnp_Discovery *)Event;
-		if (dab_event->ErrCode != UPNP_E_SUCCESS) {
-#endif
-			msg << "error(UPNP_DISCOVERY_ADVERTISEMENT_BYEBYE): " <<
-#if UPNP_VERSION >= 10800
-				UpnpGetErrorMessage(errCode) <<
-#else
-				UpnpGetErrorMessage(dab_event->ErrCode) <<
-#endif
-				".";
-			AddDebugLogLineC(logUPnP, msg);
-		}
-#if UPNP_VERSION >= 10800
-		std::string devType = UpnpDiscovery_get_DeviceType_cstr(dab_event);
-#else
-		std::string devType = dab_event->DeviceType;
-#endif
-		// Check for an InternetGatewayDevice and removes it from the list
 
-		std::transform(devType.begin(), devType.end(), devType.begin(), tolower);
-
-		if (stdStringIsEqualCI(devType, UPnP::Device::IGW)) {
-#if UPNP_VERSION >= 10800
-			const char *deviceID =
-				UpnpDiscovery_get_DeviceID_cstr(dab_event);
-			upnpCP->RemoveRootDevice(deviceID);
-#else
-			upnpCP->RemoveRootDevice(dab_event->DeviceId);
-#endif
-		}
+wxString FormatUPnPOperationSummary(const CUPnPOperationReport& report)
+{
+	wxString statusLabel;
+	switch (report.status) {
+	case UPNP_LAST_OK:
+		statusLabel = wxT("ok");
 		break;
-	}
-	case UPNP_EVENT_RECEIVED: {
-		//fprintf(stderr, "Callback: UPNP_EVENT_RECEIVED\n");
-		// Event reveived
-#if UPNP_VERSION >= 10800
-		UpnpEvent *e_event = (UpnpEvent *)Event;
-		int eventKey = UpnpEvent_get_EventKey(e_event);
-		IXML_Document *changedVariables =
-			UpnpEvent_get_ChangedVariables(e_event);
-		const std::string sid = UpnpEvent_get_SID_cstr(e_event);
-#else
-		struct Upnp_Event *e_event = (struct Upnp_Event *)Event;
-		const std::string Sid = e_event->Sid;
-#endif
-		// Parses the event
-#if UPNP_VERSION >= 10800
-		upnpCP->OnEventReceived(sid, eventKey, changedVariables);
-#else
-		upnpCP->OnEventReceived(Sid, e_event->EventKey, e_event->ChangedVariables);
-#endif
+	case UPNP_LAST_FAIL:
+		statusLabel = wxT("fail");
 		break;
-	}
-	case UPNP_EVENT_SUBSCRIBE_COMPLETE:
-		//fprintf(stderr, "Callback: UPNP_EVENT_SUBSCRIBE_COMPLETE\n");
-		msg << "error(UPNP_EVENT_SUBSCRIBE_COMPLETE): ";
-		goto upnpEventRenewalComplete;
-	case UPNP_EVENT_UNSUBSCRIBE_COMPLETE:
-		//fprintf(stderr, "Callback: UPNP_EVENT_UNSUBSCRIBE_COMPLETE\n");
-		msg << "error(UPNP_EVENT_UNSUBSCRIBE_COMPLETE): ";
-		goto upnpEventRenewalComplete;
-	case UPNP_EVENT_RENEWAL_COMPLETE: {
-		//fprintf(stderr, "Callback: UPNP_EVENT_RENEWAL_COMPLETE\n");
-		msg << "error(UPNP_EVENT_RENEWAL_COMPLETE): ";
-upnpEventRenewalComplete:
-#if UPNP_VERSION >= 10800
-		UpnpEventSubscribe *es_event = (UpnpEventSubscribe *)Event;
-		int errCode = UpnpEventSubscribe_get_ErrCode(es_event);
-		if (errCode != UPNP_E_SUCCESS) {
-#else
-		struct Upnp_Event_Subscribe *es_event =
-			(struct Upnp_Event_Subscribe *)Event;
-		if (es_event->ErrCode != UPNP_E_SUCCESS) {
-#endif
-			msg << "Error in Event Subscribe Callback";
-#if UPNP_VERSION >= 10800
-			UPnP::ProcessErrorMessage(msg.str(), errCode, nullptr, nullptr);
-#else
-			UPnP::ProcessErrorMessage(
-				msg.str(), es_event->ErrCode, nullptr, nullptr);
-#endif
-		} else {
-#if 0
-#if UPNP_VERSION >= 10800
-
-			const UpnpString *publisherUrl =
-				UpnpEventSubscribe_get_PublisherUrl(es_event);
-			const char *sid = UpnpEvent_get_SID_cstr(es_event);
-			int timeOut = UpnpEvent_get_TimeOut(es_event);
-			TvCtrlPointHandleSubscribeUpdate(
-				publisherUrl, sid, timeOut);
-#else
-			TvCtrlPointHandleSubscribeUpdate(
-				GET_UPNP_STRING(es_event->PublisherUrl),
-				es_event->Sid,
-				es_event->TimeOut );
-#endif
-#endif
-		}
+	case UPNP_LAST_DISABLED:
+		statusLabel = wxT("disabled");
 		break;
-	}
-	case UPNP_EVENT_AUTORENEWAL_FAILED:
-		//fprintf(stderr, "Callback: UPNP_EVENT_AUTORENEWAL_FAILED\n");
-		msg << "error(UPNP_EVENT_AUTORENEWAL_FAILED): ";
-		msg2 << "UPNP_EVENT_AUTORENEWAL_FAILED: ";
-		goto upnpEventSubscriptionExpired;
-	case UPNP_EVENT_SUBSCRIPTION_EXPIRED: {
-		//fprintf(stderr, "Callback: UPNP_EVENT_SUBSCRIPTION_EXPIRED\n");
-		msg << "error(UPNP_EVENT_SUBSCRIPTION_EXPIRED): ";
-		msg2 << "UPNP_EVENT_SUBSCRIPTION_EXPIRED: ";
-upnpEventSubscriptionExpired:
-#if UPNP_VERSION >= 10800
-		UpnpEventSubscribe *es_event = (UpnpEventSubscribe *)Event;
-#else
-		struct Upnp_Event_Subscribe *es_event =
-			(struct Upnp_Event_Subscribe *)Event;
-#endif
-		Upnp_SID newSID;
-		memset(newSID, 0, sizeof(Upnp_SID));
-		int TimeOut = 1801;
-#if UPNP_VERSION >= 10800
-		const char *publisherUrl =
-			UpnpEventSubscribe_get_PublisherUrl_cstr(es_event);
-#endif
-		int ret = UpnpSubscribe(
-			upnpCP->m_UPnPClientHandle,
-#if UPNP_VERSION >= 10800
-			publisherUrl,
-#else
-			GET_UPNP_STRING(es_event->PublisherUrl),
-#endif
-			&TimeOut,
-			newSID);
-		if (ret != UPNP_E_SUCCESS) {
-			msg << "Error Subscribing to EventURL";
-#if UPNP_VERSION >= 10800
-			int errCode = UpnpEventSubscribe_get_ErrCode(es_event);
-#endif
-			UPnP::ProcessErrorMessage(
-#if UPNP_VERSION >= 10800
-				msg.str(), errCode, nullptr, nullptr);
-#else
-				msg.str(), es_event->ErrCode, nullptr, nullptr);
-#endif
-		} else {
-			ServiceMap::iterator it =
-#if UPNP_VERSION >= 10800
-				upnpCP->m_ServiceMap.find(publisherUrl);
-#else
-				upnpCP->m_ServiceMap.find(GET_UPNP_STRING(es_event->PublisherUrl));
-#endif
-			if (it != upnpCP->m_ServiceMap.end()) {
-				CUPnPService &service = *(it->second);
-				service.SetTimeout(TimeOut);
-				service.SetSID(newSID);
-				msg2 << "Re-subscribed to EventURL '" <<
-#if UPNP_VERSION >= 10800
-					publisherUrl <<
-#else
-					GET_UPNP_STRING(es_event->PublisherUrl) <<
-#endif
-					"' with SID == '" <<
-					newSID << "'.";
-				AddDebugLogLineC(logUPnP, msg2);
-				// In principle, we should test to see if the
-				// service is the same. But here we only have one
-				// service, so...
-				upnpCP->RefreshPortMappings();
-			} else {
-				msg << "Error: did not find service " <<
-					newSID << " in the service map.";
-				AddDebugLogLineC(logUPnP, msg);
-			}
-		}
+	case UPNP_LAST_SUPPRESSED:
+		statusLabel = wxT("suppressed");
 		break;
-	}
-	case UPNP_CONTROL_ACTION_COMPLETE: {
-		//fprintf(stderr, "Callback: UPNP_CONTROL_ACTION_COMPLETE\n");
-		// This is here if we choose to do this asynchronously
-#if UPNP_VERSION >= 10800
-		UpnpActionComplete *a_event = (UpnpActionComplete *)Event;
-		int errCode = UpnpActionComplete_get_ErrCode(a_event);
-		IXML_Document *actionResult =
-			UpnpActionComplete_get_ActionResult(a_event);
-		if (errCode != UPNP_E_SUCCESS) {
-#else
-		struct Upnp_Action_Complete *a_event =
-			(struct Upnp_Action_Complete *)Event;
-		if (a_event->ErrCode != UPNP_E_SUCCESS) {
-#endif
-			UPnP::ProcessErrorMessage(
-				"UpnpSendActionAsync",
-#if UPNP_VERSION >= 10800
-				errCode, nullptr,
-				actionResult);
-#else
-				a_event->ErrCode, nullptr,
-				a_event->ActionResult);
-#endif
-		} else {
-			// Check the response document
-			UPnP::ProcessActionResponse(
-#if UPNP_VERSION >= 10800
-				actionResult,
-#else
-				a_event->ActionResult,
-#endif
-				"<UpnpSendActionAsync>");
-		}
-		/* No need for any processing here, just print out results.
-		 * Service state table updates are handled by events.
-		 */
-		break;
-	}
-	case UPNP_CONTROL_GET_VAR_COMPLETE: {
-		//fprintf(stderr, "Callback: UPNP_CONTROL_GET_VAR_COMPLETE\n");
-		msg << "error(UPNP_CONTROL_GET_VAR_COMPLETE): ";
-#if UPNP_VERSION >= 10800
-		UpnpStateVarComplete *sv_event = (UpnpStateVarComplete *)Event;
-		int errCode = UpnpStateVarComplete_get_ErrCode(sv_event);
-		if (errCode != UPNP_E_SUCCESS) {
-#else
-		struct Upnp_State_Var_Complete *sv_event =
-			(struct Upnp_State_Var_Complete *)Event;
-		if (sv_event->ErrCode != UPNP_E_SUCCESS) {
-#endif
-			msg << "m_UpnpGetServiceVarStatusAsync";
-			UPnP::ProcessErrorMessage(
-#if UPNP_VERSION >= 10800
-				msg.str(), errCode, nullptr, nullptr);
-#else
-				msg.str(), sv_event->ErrCode, nullptr, nullptr);
-#endif
-		} else {
-#if 0
-			// Warning: The use of UpnpGetServiceVarStatus and
-			// UpnpGetServiceVarStatusAsync is deprecated by the
-			// UPnP forum.
-#if UPNP_VERSION >= 10800
-			const char *ctrlUrl =
-				UpnpStateVarComplete_get_CtrlUrl(sv_event);
-			const char *stateVarName =
-				UpnpStateVarComplete_get_StateVarName(sv_event);
-			const DOMString currentVal =
-				UpnpStateVarComplete_get_CurrentVal(sv_event);
-			TvCtrlPointHandleGetVar(
-				ctrlUrl, stateVarName, currentVal);
-#else
-			TvCtrlPointHandleGetVar(
-				sv_event->CtrlUrl,
-				sv_event->StateVarName,
-				sv_event->CurrentVal );
-#endif
-#endif
-		}
-		break;
-	}
-	// ignore these cases, since this is not a device
-	case UPNP_CONTROL_GET_VAR_REQUEST:
-		//fprintf(stderr, "Callback: UPNP_CONTROL_GET_VAR_REQUEST\n");
-		msg << "error(UPNP_CONTROL_GET_VAR_REQUEST): ";
-		goto eventSubscriptionRequest;
-	case UPNP_CONTROL_ACTION_REQUEST:
-		//fprintf(stderr, "Callback: UPNP_CONTROL_ACTION_REQUEST\n");
-		msg << "error(UPNP_CONTROL_ACTION_REQUEST): ";
-		goto eventSubscriptionRequest;
-	case UPNP_EVENT_SUBSCRIPTION_REQUEST:
-		//fprintf(stderr, "Callback: UPNP_EVENT_SUBSCRIPTION_REQUEST\n");
-		msg << "error(UPNP_EVENT_SUBSCRIPTION_REQUEST): ";
-eventSubscriptionRequest:
-		msg << "This is not a UPnP Device, this is a UPnP Control Point, event ignored.";
-		AddDebugLogLineC(logUPnP, msg);
-		break;
+	case UPNP_LAST_UNKNOWN:
 	default:
-		// Humm, this is not good, we forgot to handle something...
-		fprintf(stderr,
-			"Callback: default... Unknown event:'%d', not good.\n",
-			EventType);
-		msg << "error(UPnP::Callback): Event not handled:'" <<
-			EventType << "'.";
-		fprintf(stderr, "%s\n", msg.str().c_str());
-		AddDebugLogLineC(logUPnP, msg);
-		// Better not throw in the callback. Who would catch it?
-		//throw CUPnPException(msg);
+		statusLabel = wxT("unknown");
 		break;
 	}
 
-	return 0;
+	wxString routerLabel = report.routerName.IsEmpty() ? report.routerId : report.routerName;
+	if (routerLabel.IsEmpty()) {
+		routerLabel = wxT("unknown");
+	}
+	wxString adapterLabel = report.adapterId.IsEmpty() ? wxString(wxT("unknown")) : report.adapterId;
+	const wxString failureStage = FailureStageLabel(report.failureStage);
+
+	wxString summary = wxString::Format(
+		wxT("UPnP [%s]: status=%s stage=%s router=%s adapter=%s requested=%zu mapped=%zu retries=%u discovered=%u filtered=%u"),
+		report.scope,
+		statusLabel,
+		failureStage,
+		routerLabel,
+		adapterLabel,
+		report.requestedMappings.size(),
+		report.mappedMappings.size(),
+		report.retryCount,
+		report.discoveredDevices,
+		report.filteredDevices);
+
+	if (!report.lastError.IsEmpty()) {
+		summary << wxT(" error=\"") << report.lastError << wxT("\"");
+	}
+	if (report.suppressedByPolicy) {
+		summary << wxT(" (suppressed)");
+	}
+
+	return summary;
 }
 
 
-void CUPnPControlPoint::OnEventReceived(
-		const std::string &Sid,
-		int EventKey,
-		IXML_Document *ChangedVariablesDoc)
-{
-	std::ostringstream msg;
-	if (Sid.empty()) {
-		AddDebugLogLineN(logUPnP, wxT("UPNP_EVENT_RECEIVED with empty SID, ignoring."));
-		return;
-	}
-	ServiceMap::iterator it = m_ServiceMap.find(Sid);
-	if (it == m_ServiceMap.end()) {
-		AddDebugLogLineN(logUPnP,
-			"CUPnPControlPoint::OnEventReceived: Ignoring property change, service not subscribed.");
-		return;
-	}
-	CUPnPService *service = it->second;
-
-	std::string formatted = FormatUPnPEventLog(Sid, EventKey, ChangedVariablesDoc);
-	AddDebugLogLineC(logUPnP, wxString::FromUTF8(formatted.c_str()));
-}
-
-
-void CUPnPControlPoint::AddRootDevice(
-	IXML_Element *rootDevice, const std::string &urlBase,
-	const char *location, int expires)
-{
-	// Lock the Root Device List
-	CUPnPMutexLocker lock(m_RootDeviceListMutex);
-
-	// Root node's URLBase
-	std::string OriginalURLBase(urlBase);
-	std::string FixedURLBase(OriginalURLBase.empty() ?
-		location :
-		OriginalURLBase);
-	if (!OriginalURLBase.empty() && !IsSafeLanUrl(OriginalURLBase)) {
-		std::ostringstream warn;
-		warn << "Rejecting root device with non-LAN URLBase: " << OriginalURLBase;
-		AddDebugLogLineC(logUPnP, warn);
-		return;
-	}
-	if (!FixedURLBase.empty() && !IsSafeLanUrl(FixedURLBase)) {
-		std::ostringstream warn;
-		warn << "Rejecting root device due to fixed URLBase outside LAN: " << FixedURLBase;
-		AddDebugLogLineC(logUPnP, warn);
-		return;
-	}
-
-	// Get the UDN (Unique Device Name)
-	std::string UDN(IXML::Element::GetChildValueByTag(rootDevice, "UDN"));
-	RootDeviceMap::iterator it = m_RootDeviceMap.find(UDN);
-	bool alreadyAdded = it != m_RootDeviceMap.end();
-	if (alreadyAdded) {
-		// Just set the expires field
-		it->second->SetExpires(expires);
-	} else {
-		// Add a new root device to the root device list
-		CUPnPRootDevice *upnpRootDevice = new CUPnPRootDevice(
-			*this, rootDevice,
-			OriginalURLBase, FixedURLBase,
-			location, expires);
-		m_RootDeviceMap[upnpRootDevice->GetUDN()] = upnpRootDevice;
-	}
-}
-
-
-void CUPnPControlPoint::RemoveRootDevice(const char *udn)
-{
-	// Lock the Root Device List
-	CUPnPMutexLocker lock(m_RootDeviceListMutex);
-
-	// Remove
-	std::string UDN(udn);
-	RootDeviceMap::iterator it = m_RootDeviceMap.find(UDN);
-	if (it != m_RootDeviceMap.end()) {
-		delete it->second;
-		m_RootDeviceMap.erase(UDN);
-	}
-}
-
-
-void CUPnPControlPoint::Subscribe(CUPnPService &service)
-{
-	std::ostringstream msg;
-	if (service.GetAbsSCPDURL().empty() || service.GetAbsControlURL().empty()) {
-		msg << "Skipping subscription for service " << service.GetServiceType() << " due to missing LAN-safe control/SCPD URLs.";
-		AddDebugLogLineN(logUPnP, msg);
-		return;
-	}
-	if (service.GetAbsEventSubURL().empty()) {
-		msg << "Skipping subscription for service " << service.GetServiceType() << " due to missing event URL.";
-		AddDebugLogLineN(logUPnP, msg);
-		return;
-	}
-
-	IXML_Document *scpdDoc = nullptr;
-	int errcode = UpnpDownloadXmlDoc(
-		service.GetAbsSCPDURL().c_str(), &scpdDoc);
-	if (errcode == UPNP_E_SUCCESS) {
-		// Get the root node of this service (the SCPD Document)
-		IXML_Element *scpdRoot = IXML::Document::GetRootElement(scpdDoc);
-		if (scpdRoot == nullptr) {
-			msg << "Received empty SCPD document for service " << service.GetServiceType();
-			AddDebugLogLineC(logUPnP, msg);
-			msg.str("");
-			IXML::Document::Free(scpdDoc);
-			return;
-		}
-		CUPnPSCPD *scpd = nullptr;
-		try {
-			scpd = new CUPnPSCPD(*this, scpdRoot, service.GetAbsSCPDURL());
-		} catch (...) {
-			msg << "Failed to parse SCPD for service " << service.GetServiceType();
-			AddDebugLogLineC(logUPnP, msg);
-			msg.str("");
-			IXML::Document::Free(scpdDoc);
-			delete scpd;
-			return;
-		}
-		service.SetSCPD(scpd);
-		IXML::Document::Free(scpdDoc);
-		m_ServiceMap[service.GetAbsEventSubURL()] = &service;
-		msg << "Successfully retrieved SCPD Document for service " <<
-			service.GetServiceType() << ", absEventSubURL: " <<
-			service.GetAbsEventSubURL() << ".";
-		AddDebugLogLineC(logUPnP, msg);
-		msg.str("");
-
-		// Now try to subscribe to this service. If the subscription
-		// is not successful, we will not be notified about events,
-		// but it may be possible to use the service anyway.
-		errcode = UpnpSubscribe(m_UPnPClientHandle,
-			service.GetAbsEventSubURL().c_str(),
-			service.GetTimeoutAddr(),
-			service.GetSID());
-		if (errcode == UPNP_E_SUCCESS) {
-			msg << "Successfully subscribed to service " <<
-				service.GetServiceType() << ", absEventSubURL: " <<
-				service.GetAbsEventSubURL() << ".";
-			AddDebugLogLineC(logUPnP, msg);
-		} else {
-			msg << "Error subscribing to service " <<
-				service.GetServiceType() << ", absEventSubURL: " <<
-				service.GetAbsEventSubURL() << ", error: " <<
-				UpnpGetErrorMessage(errcode) << ".";
-			goto error;
-		}
-	} else {
-		msg << "Error getting SCPD Document from " <<
-			service.GetAbsSCPDURL() << ".";
-		AddDebugLogLineC(logUPnP, msg);
-	}
-	
-	return;
-
-	// Error processing
-error:
-	AddDebugLogLineC(logUPnP, msg);
-}
-
-
-void CUPnPControlPoint::Unsubscribe(CUPnPService &service)
-{
-	const std::string& eventUrl = service.GetAbsEventSubURL();
-	if (eventUrl.empty()) {
-		return;
-	}
-	ServiceMap::iterator it = m_ServiceMap.find(eventUrl);
-	if (it != m_ServiceMap.end()) {
-		m_ServiceMap.erase(it);
-		if (service.GetSID() != nullptr && service.GetSID()[0] != '\0') {
-			UpnpUnSubscribe(m_UPnPClientHandle, service.GetSID());
-		}
-	}
-}
-
-#endif /* ENABLE_UPNP */
+#endif // ENABLE_UPNP

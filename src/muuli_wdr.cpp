@@ -1889,6 +1889,18 @@ wxSizer *PreferencesDirectoriesTab( wxWindow *parent, bool call_fit, bool set_si
 
     item0->Add( item5, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxALL, 0 );
 
+    wxStaticBox *item10a = new wxStaticBox( parent, -1, _("Internal paths (advanced)") );
+    wxStaticBoxSizer *item9a = new wxStaticBoxSizer( item10a, wxVERTICAL );
+
+    wxCheckBox *item11a = new wxCheckBox( parent, IDC_ALLOWUNSAFEINTERNALDIRS, _("Allow internal directories outside the configuration base (legacy)"), wxDefaultPosition, wxDefaultSize, 0 );
+    item11a->SetToolTip( _("Valid external paths are supported by default. This toggle only relaxes legacy guards; --allow-unsafe-internal-paths is optional/legacy."));
+    item9a->Add( item11a, 0, wxALIGN_LEFT|wxBOTTOM, 5 );
+
+    wxStaticText *item12a = new wxStaticText( parent, IDC_UNSAFEINTERNALDIRS_NOTE, _("External absolute paths are validated and supported. Leave this unchecked unless you need legacy compatibility."), wxDefaultPosition, wxDefaultSize, 0 );
+    item9a->Add( item12a, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxBOTTOM, 0 );
+
+    item0->Add( item9a, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxALL, 0 );
+
     wxStaticBox *item10 = new wxStaticBox( parent, -1, _("Shared folders") );
     wxStaticBoxSizer *item9 = new wxStaticBoxSizer( item10, wxVERTICAL );
 

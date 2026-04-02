@@ -192,7 +192,6 @@ endif (BUILD_MONOLITHIC)
 
 if (NEED_LIB_MULEAPPCOMMON)
 	add_library (muleappcommon STATIC
-		${UPNP_SOURCES}
 		CFile.cpp
 		ClientCredits.cpp
 		DataToText.cpp
@@ -236,7 +235,7 @@ if (NEED_LIB_MULEAPPCOMMON)
 
 	if (ENABLE_UPNP)
 		target_link_libraries (muleappcommon
-			PUBLIC UPNP::Shared
+			PUBLIC wmule_upnp_sdk
 		)
 	endif()
 endif()
@@ -306,10 +305,6 @@ if (NEED_LIB_MULEAPPCORE)
 		UPnPUrlUtils.cpp
 	)
 
-	if (ENABLE_UPNP)
-		target_sources (muleappcore PRIVATE UPnPEventLog.cpp)
-	endif()
-
 	target_compile_definitions (muleappcore
 		PRIVATE wxUSE_GUI=0
 		PRIVATE WXUSINGDLL
@@ -324,9 +319,7 @@ if (NEED_LIB_MULEAPPCORE)
 	)
 
 	if (ENABLE_UPNP)
-		target_include_directories (muleappcore
-			PRIVATE $<TARGET_PROPERTY:UPNP::Shared,INTERFACE_INCLUDE_DIRECTORIES>
-		)
+		target_link_libraries (muleappcore PUBLIC wmule_upnp_sdk)
 	endif()
 
 	target_link_libraries (muleappcore

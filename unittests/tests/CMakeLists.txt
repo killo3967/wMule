@@ -154,6 +154,45 @@ target_link_libraries (PathTraversalTest
 	muleunit
 )
 
+add_executable (InternalPathGuardsTest
+	InternalPathGuardsTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	${CMAKE_SOURCE_DIR}/src/libs/common/Path.cpp
+)
+
+add_test (NAME InternalPathGuardsTest
+	COMMAND InternalPathGuardsTest
+)
+
+target_include_directories (InternalPathGuardsTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries (InternalPathGuardsTest
+	muleunit
+)
+
+add_executable (ECPreferencesValidationTest
+	ECPreferencesValidationTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	${CMAKE_SOURCE_DIR}/src/libs/common/Path.cpp
+)
+
+add_test (NAME ECPreferencesValidationTest
+	COMMAND ECPreferencesValidationTest
+)
+
+target_include_directories (ECPreferencesValidationTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (ECPreferencesValidationTest
+	muleunit
+)
+
 add_executable (ClientUDPTest
 	ClientUDPTest.cpp
 	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
@@ -264,8 +303,6 @@ endif()
 if (ENABLE_UPNP)
 	add_executable (UPnPXmlSafetyTest
 		UPnPXmlSafetyTest.cpp
-		${CMAKE_SOURCE_DIR}/src/UPnPEventLog.cpp
-		${CMAKE_SOURCE_DIR}/src/UPnPUrlUtils.cpp
 		${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
 		${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
 	)
@@ -281,7 +318,7 @@ if (ENABLE_UPNP)
 
 	target_link_libraries (UPnPXmlSafetyTest
 		muleunit
-		IXML::Shared
+		muleappcore
 	)
 
 	if (WIN32)
@@ -289,6 +326,27 @@ if (ENABLE_UPNP)
 			ws2_32
 		)
 	endif()
+
+	add_executable (UPnPFeedbackPolicyTest
+		UPnPFeedbackPolicyTest.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+		${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	)
+
+	add_test (NAME UPnPFeedbackPolicyTest
+		COMMAND UPnPFeedbackPolicyTest
+	)
+
+	target_include_directories (UPnPFeedbackPolicyTest
+		PRIVATE ${CMAKE_SOURCE_DIR}/src
+		PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+	)
+
+	target_link_libraries (UPnPFeedbackPolicyTest
+		muleunit
+		muleappcore
+	)
+
 endif()
 
 add_executable (StringFunctionsTest

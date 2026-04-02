@@ -23,6 +23,7 @@
 //
 
 #include "Path.h"
+#include "../../Logger.h"		// Needed for AddDebugLogLineC
 #include "StringFunctions.h"		// Needed for filename2char()
 
 #include <wx/file.h>
@@ -901,4 +902,280 @@ bool IsSubPathOf(const CPath& parent, const CPath& child)
 	}
 
 	return child.StartsWith(parent);
+}
+
+static wxString NormalizeBaseDir(EInternalPathKind kind, const CInternalPathContext& context, EInternalPathError& error)
+{
+	error = EInternalPathError::None;
+	wxString base;
+	switch (kind) {
+		case EInternalPathKind::TempDir:
+		case EInternalPathKind::IncomingDir:
+			base = context.m_configDir;
+			break;
+		case EInternalPathKind::OSDir:
+			base = context.m_incomingDir;
+			break;
+		case EInternalPathKind::ConfigDir:
+		default:
+			return wxEmptyString;
+	}
+
+	if (base.IsEmpty()) {
+		error = EInternalPathError::InvalidBase;
+		return wxEmptyString;
+	}
+
+	wxString normalizedBase;
+	if (!NormalizeAbsolutePathNoTraversal(base, normalizedBase)) {
+		error = EInternalPathError::InvalidBase;
+		return wxEmptyString;
+	}
+
+	CPath basePath(normalizedBase);
+	if (basePath.FileExists()) {
+		error = EInternalPathError::InvalidBase;
+		return wxEmptyString;
+	}
+
+	error = EInternalPathError::None;
+	return normalizedBase;
+}
+
+static wxString DescribeInternalPathKind(EInternalPathKind kind)
+{
+	switch (kind) {
+		case EInternalPathKind::TempDir:
+			return wxT("temp directory");
+		case EInternalPathKind::IncomingDir:
+			return wxT("incoming directory");
+		case EInternalPathKind::OSDir:
+			return wxT("online signature directory");
+		case EInternalPathKind::ConfigDir:
+		default:
+			return wxT("config directory");
+	}
+}
+
+static EInternalPathError MapNormalizationFailure(const wxFileName& candidate, bool createIfMissing)
+{
+	if (candidate.IsRelative()) {
+		return EInternalPathError::NotAbsolute;
+	}
+
+	if (ContainsTraversal(candidate)) {
+		return EInternalPathError::TraversalRejected;
+	}
+
+	if (!candidate.DirExists() && !createIfMissing) {
+		return EInternalPathError::NormalizeFailed;
+	}
+
+	return EInternalPathError::NormalizeFailed;
+}
+
+static wxString EnsureTrailingSeparator(const wxString& path)
+{
+	if (path.IsEmpty()) {
+		return path;
+	}
+
+	if (path.Last() == wxFileName::GetPathSeparator()) {
+		return path;
+	}
+
+	return path + wxFileName::GetPathSeparator();
+}
+
+bool InternalPathAllowsExternalBase(EInternalPathKind kind)
+{
+	switch (kind) {
+		case EInternalPathKind::IncomingDir:
+		case EInternalPathKind::TempDir:
+		case EInternalPathKind::OSDir:
+			return true;
+		case EInternalPathKind::ConfigDir:
+			return false;
+	}
+
+	return false;
+}
+
+CInternalPathResult NormalizeInternalDir(EInternalPathKind kind,
+	const wxString& candidate, const CInternalPathContext& context)
+{
+	CInternalPathResult result{false, wxEmptyString, wxEmptyString, EInternalPathError::EmptyInput, false};
+
+	if (candidate.IsEmpty()) {
+		return result;
+	}
+
+	EInternalPathError baseError = EInternalPathError::None;
+	const wxString normalizedBase = NormalizeBaseDir(kind, context, baseError);
+	if (baseError != EInternalPathError::None) {
+		result.m_error = baseError;
+		return result;
+	}
+	result.m_evaluatedBase = normalizedBase;
+
+	wxFileName fn(candidate);
+	if (fn.IsRelative()) {
+		result.m_error = EInternalPathError::NotAbsolute;
+		return result;
+	}
+
+	if (ContainsTraversal(fn)) {
+		result.m_error = EInternalPathError::TraversalRejected;
+		return result;
+	}
+
+	wxString normalizedCandidate;
+	if (!NormalizeAbsolutePathNoTraversal(candidate, normalizedCandidate)) {
+		result.m_error = MapNormalizationFailure(fn, context.m_createIfMissing);
+		return result;
+	}
+
+	CPath normalizedPath(normalizedCandidate);
+	if (normalizedPath.FileExists()) {
+		result.m_error = EInternalPathError::FileInsteadOfDir;
+		return result;
+	}
+
+	if (!normalizedBase.IsEmpty()) {
+		const CPath basePath(normalizedBase);
+		const bool insideBase = IsSubPathOf(basePath, normalizedPath);
+		if (!insideBase) {
+			const bool allowExternal = context.m_allowUnsafeOutsideBase || InternalPathAllowsExternalBase(kind);
+			if (!allowExternal) {
+				result.m_error = EInternalPathError::OutsideBase;
+				return result;
+			}
+
+			result.m_isExternalToBase = true;
+			AddDebugLogLineC(logGeneral, wxT("Accepted %s outside base '%s' (validated)."),
+				DescribeInternalPathKind(kind), normalizedBase);
+		}
+	}
+
+	if (!normalizedPath.DirExists()) {
+		if (!context.m_createIfMissing) {
+			result.m_error = EInternalPathError::NormalizeFailed;
+			return result;
+		}
+
+		if (!CPath::MakeDir(normalizedPath)) {
+			result.m_error = EInternalPathError::AccessDenied;
+			return result;
+		}
+	}
+
+	result.m_ok = true;
+	result.m_error = EInternalPathError::None;
+	result.m_normalizedPath = EnsureTrailingSeparator(normalizedCandidate);
+	if (!result.m_evaluatedBase.IsEmpty()) {
+		result.m_evaluatedBase = EnsureTrailingSeparator(result.m_evaluatedBase);
+	}
+	return result;
+}
+
+wxString InternalPathErrorToString(EInternalPathError error)
+{
+	switch (error) {
+		case EInternalPathError::None:
+			return wxT("none");
+		case EInternalPathError::EmptyInput:
+			return wxT("empty input");
+		case EInternalPathError::NotAbsolute:
+			return wxT("path must be absolute");
+		case EInternalPathError::TraversalRejected:
+			return wxT("path contains traversal");
+		case EInternalPathError::OutsideBase:
+			return wxT("path outside allowed base");
+		case EInternalPathError::InvalidBase:
+			return wxT("invalid base directory");
+		case EInternalPathError::NormalizeFailed:
+			return wxT("could not normalize directory");
+		case EInternalPathError::FileInsteadOfDir:
+			return wxT("path points to a file");
+		case EInternalPathError::AccessDenied:
+			return wxT("access denied creating directory");
+	}
+
+	return wxT("unknown error");
+}
+
+bool ResolveInternalPathKind(const wxString& key, EInternalPathKind& kind)
+{
+	if (key == wxT("/eMule/TempDir")) {
+		kind = EInternalPathKind::TempDir;
+		return true;
+	}
+
+	if (key == wxT("/eMule/IncomingDir")) {
+		kind = EInternalPathKind::IncomingDir;
+		return true;
+	}
+
+	if (key == wxT("/eMule/OSDirectory")) {
+		kind = EInternalPathKind::OSDir;
+		return true;
+	}
+
+	if (key == wxT("/Config/ConfigDir")) {
+		kind = EInternalPathKind::ConfigDir;
+		return true;
+	}
+
+	return false;
+}
+
+wxString GetDefaultInternalPath(EInternalPathKind kind, const CInternalPathContext& context)
+{
+	switch (kind) {
+		case EInternalPathKind::ConfigDir:
+			return EnsureTrailingSeparator(context.m_configDir);
+		case EInternalPathKind::TempDir:
+			return EnsureTrailingSeparator(JoinPaths(context.m_configDir, wxT("Temp")));
+		case EInternalPathKind::IncomingDir:
+			return EnsureTrailingSeparator(JoinPaths(context.m_configDir, wxT("Incoming")));
+		case EInternalPathKind::OSDir:
+			return EnsureTrailingSeparator(JoinPaths(context.m_incomingDir, wxT("amule")));
+	}
+
+	return wxEmptyString;
+}
+
+CInternalPathResult NormalizePreferencePathForLoad(const wxString& key,
+	const wxString& candidate, const CInternalPathContext& context)
+{
+	EInternalPathKind kind;
+	if (!ResolveInternalPathKind(key, kind)) {
+		return NormalizeInternalDir(EInternalPathKind::ConfigDir, candidate, context);
+	}
+
+	return NormalizeInternalDir(kind, candidate, context);
+}
+
+COSDirValidationOutcome NormalizeOSDirWithFallback(const wxString& candidate,
+	const CInternalPathContext& context)
+{
+	COSDirValidationOutcome outcome;
+	outcome.m_usedFallback = false;
+	outcome.m_rejectedError = EInternalPathError::None;
+	outcome.m_result = NormalizeInternalDir(EInternalPathKind::OSDir, candidate, context);
+
+	if (outcome.m_result.m_ok) {
+		return outcome;
+	}
+
+	outcome.m_rejectedError = outcome.m_result.m_error;
+
+	const wxString fallbackOSDir = GetDefaultInternalPath(EInternalPathKind::OSDir, context);
+	CInternalPathResult fallbackOSDirValidation = NormalizeInternalDir(EInternalPathKind::OSDir, fallbackOSDir, context);
+	if (fallbackOSDirValidation.m_ok) {
+		outcome.m_result = fallbackOSDirValidation;
+		outcome.m_usedFallback = true;
+	}
+
+	return outcome;
 }

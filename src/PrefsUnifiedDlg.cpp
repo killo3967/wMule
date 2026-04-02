@@ -154,6 +154,7 @@ BEGIN_EVENT_TABLE(PrefsUnifiedDlg,wxDialog)
 	EVT_CHECKBOX(IDC_MSGFILTER_WORD,	PrefsUnifiedDlg::OnCheckBoxChange)
 	EVT_CHECKBOX(IDC_FILTERCOMMENTS,	PrefsUnifiedDlg::OnCheckBoxChange)
 	EVT_CHECKBOX(IDC_STARTNEXTFILE,		PrefsUnifiedDlg::OnCheckBoxChange)
+	EVT_CHECKBOX(IDC_ALLOWUNSAFEINTERNALDIRS,	PrefsUnifiedDlg::OnCheckBoxChange)
 	EVT_CHECKBOX(IDC_ENABLETRAYICON,	PrefsUnifiedDlg::OnCheckBoxChange)
 	EVT_CHECKBOX(IDC_MACHIDEONCLOSE,	PrefsUnifiedDlg::OnCheckBoxChange)
 	EVT_CHECKBOX(IDC_VERTTOOLBAR,		PrefsUnifiedDlg::OnCheckBoxChange)
@@ -700,6 +701,7 @@ void PrefsUnifiedDlg::OnOk(wxCommandEvent& WXUNUSED(event))
 		disabled.mapped.clear();
 		disabled.retryCount = 0;
 		disabled.lastError.clear();
+		disabled.failureStage = UPNP_STAGE_NONE;
 		disabled.suppressedUntilSessionEnd = false;
 		thePrefs::SetLastUPnPResultCore(disabled);
 	}
@@ -716,6 +718,7 @@ void PrefsUnifiedDlg::OnOk(wxCommandEvent& WXUNUSED(event))
 		disabled.mapped.clear();
 		disabled.retryCount = 0;
 		disabled.lastError.clear();
+		disabled.failureStage = UPNP_STAGE_NONE;
 		disabled.suppressedUntilSessionEnd = false;
 		thePrefs::SetLastUPnPResultWeb(disabled);
 	}
@@ -969,6 +972,28 @@ wxString PrefsUnifiedDlg::BuildUPnPStatusLabel(const CUPnPLastResult& result, bo
 		router = wxT("unknown");
 	}
 	wxString adapter = result.adapterId.IsEmpty() ? wxString(wxT("unknown")) : result.adapterId;
+	wxString stageLabel;
+	switch (result.failureStage) {
+	case UPNP_STAGE_DISCOVERY_EMPTY:
+		stageLabel = wxT("discovery-empty");
+		break;
+	case UPNP_STAGE_DISCOVERY_FILTERED:
+		stageLabel = wxT("discovery-filtered");
+		break;
+	case UPNP_STAGE_IGD_INVALID:
+		stageLabel = wxT("igd-invalid");
+		break;
+	case UPNP_STAGE_MAPPING_PRIMARY_FAILED:
+		stageLabel = wxT("mapping-primary-failed");
+		break;
+	case UPNP_STAGE_MAPPING_FALLBACK_FAILED:
+		stageLabel = wxT("mapping-fallback-failed");
+		break;
+	case UPNP_STAGE_NONE:
+	default:
+		stageLabel = wxT("none");
+		break;
+	}
 	wxString timestamp = wxT("unknown time");
 	if (result.timestampUtc > 0) {
 	const sint64 timestampSeconds = static_cast<sint64>(result.timestampUtc / 1000);
@@ -988,8 +1013,9 @@ wxString PrefsUnifiedDlg::BuildUPnPStatusLabel(const CUPnPLastResult& result, bo
 	}
 
 	wxString label = wxString::Format(
-		wxT("State: %s | Last: %s | Router: %s | Adapter: %s | Ports: %zu mapped of %zu | Retries: %u"),
+		wxT("State: %s | Stage: %s | Last: %s | Router: %s | Adapter: %s | Ports: %zu mapped of %zu | Retries: %u"),
 		status,
+		stageLabel,
 		timestamp,
 		router,
 		adapter,
@@ -1043,6 +1069,33 @@ void PrefsUnifiedDlg::OnUPnPManualRetry(wxCommandEvent& event)
 	}
 
 	UpdateUPnPStatusUI();
+}
+
+
+void PrefsUnifiedDlg::UpdateUnsafeDirsStatusLabel()
+{
+	wxStaticText* note = CastChild(IDC_UNSAFEINTERNALDIRS_NOTE, wxStaticText);
+	if (!note) {
+		return;
+	}
+
+	wxCheckBox* toggle = CastChild(IDC_ALLOWUNSAFEINTERNALDIRS, wxCheckBox);
+	const bool prefEnabled = toggle ? toggle->IsChecked() : false;
+	const bool sessionGate = thePrefs::AllowUnsafeInternalDirsSessionGate();
+
+	wxString label;
+	if (prefEnabled && sessionGate) {
+		label = _("Soporte externo ACTIVO: rutas internas fuera de la base validadas en esta sesión. El flag inseguro es legado.");
+	} else if (prefEnabled && !sessionGate) {
+		label = _("Preferencia activa. Las rutas externas válidas ya se aceptan; el flag --allow-unsafe-internal-paths es opcional/legado.");
+	} else if (!prefEnabled && sessionGate) {
+		label = _("Flag --allow-unsafe-internal-paths detectado pero la preferencia está desactivada. Las rutas externas válidas ya funcionan sin él.");
+	} else {
+		label = _("Modo seguro activo. Las rutas externas absolutas válidas se soportan; activa esta opción solo para compatibilidad legacy.");
+	}
+
+	note->SetLabel(label);
+	note->Wrap(note->GetParent()->GetClientSize().GetWidth());
 }
 
 
@@ -1164,6 +1217,14 @@ void PrefsUnifiedDlg::OnCheckBoxChange(wxCommandEvent& event)
 		case IDC_STARTNEXTFILE:
 			FindWindow(IDC_STARTNEXTFILE_SAME)->Enable(value);
 			FindWindow(IDC_STARTNEXTFILE_ALPHA)->Enable(value);
+			break;
+
+		case IDC_ALLOWUNSAFEINTERNALDIRS:
+			UpdateUnsafeDirsStatusLabel();
+			if (value) {
+				theApp->ShowAlert(_("Las rutas externas válidas ya se aceptan y se validan. Esta opción es de compatibilidad legacy: úsala solo si necesitás relajar guardas antiguos y entendés el riesgo."),
+					_("Advertencia"), wxOK | wxICON_WARNING);
+			}
 			break;
 
 		case IDC_MACHIDEONCLOSE:
@@ -1388,6 +1449,7 @@ void PrefsUnifiedDlg::OnInitDialog( wxInitDialogEvent& WXUNUSED(evt) )
 {
 // This function exists solely to avoid automatic transfer-to-widget calls
 	UpdateUPnPStatusUI();
+	UpdateUnsafeDirsStatusLabel();
 }
 
 

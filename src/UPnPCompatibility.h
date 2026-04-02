@@ -28,11 +28,10 @@
 #define UPNPCOMPATIBILITY_H
 
 
-#include <upnp.h>
-#include <upnptools.h>
-
-
 #include <sstream>
+
+
+#include <wx/thread.h>
 
 
 #include <common/MuleDebug.h>		// for CMuleException::

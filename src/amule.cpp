@@ -38,14 +38,18 @@
 #include <wx/cmdline.h>			// Needed for wxCmdLineParser
 #include <wx/config.h>			// Do_not_auto_remove (win32)
 #include <wx/fileconf.h>
+#include <wx/msgdlg.h>
 #include <wx/socket.h>
 #include <wx/tokenzr.h>
 #include <wx/wfstream.h>
 #include <wx/stopwatch.h>		// Needed for wxStopWatch
+#include <wx/textdlg.h>
+#include <wx/utils.h>
 
 
 #include <common/Format.h>		// Needed for CFormat
 #include <common/SecretHash.h>
+#include <common/Path.h>
 #include "kademlia/kademlia/Kademlia.h"
 #include "kademlia/kademlia/Prefs.h"
 #include "kademlia/kademlia/UDPFirewallTester.h"
@@ -77,6 +81,47 @@
 #include "ThreadTasks.h"
 #include "UploadQueue.h"		// Needed for CUploadQueue
 #include "UploadBandwidthThrottler.h"
+
+namespace {
+
+wxString NormalizeManualECReason(wxString reason)
+{
+	reason.Replace(wxT("\r"), wxEmptyString);
+	reason.Replace(wxT("\n"), wxT(" "));
+	reason.Trim(true).Trim(false);
+	if (reason.IsEmpty()) {
+		reason = _("(no reason provided)");
+	}
+	return reason;
+}
+
+bool PromptManualECActivation(wxWindow* parent, const wxString& source, wxString* outReason)
+{
+	const wxString message = CFormat(_(
+		"You are enabling External Connections via %s.\n\n"
+		"This exposes the remote control interface to your network."
+		" Do you want to continue?")) % source;
+	int response = theApp->ShowAlert(message, _("External Connections"), wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+	if (response != wxYES) {
+		return false;
+	}
+
+	wxTextEntryDialog reasonDialog(
+		parent,
+		_("Describe why you are enabling External Connections (this note will be logged):"),
+		_("External Connections"),
+		wxEmptyString,
+		wxTextEntryDialogStyle
+	);
+	if (reasonDialog.ShowModal() != wxID_OK) {
+		return false;
+	}
+
+	*outReason = NormalizeManualECReason(reasonDialog.GetValue());
+	return true;
+}
+
+}
 #include "UserEvents.h"
 #include "ScopedPtr.h"
 
@@ -396,6 +441,58 @@ bool CamuleApp::OnInit()
 
 	glob_prefs = new CPreferences();
 
+	const bool unsafePref = thePrefs::GetAllowUnsafeInternalDirs();
+	const bool unsafeEffective = thePrefs::AllowUnsafeInternalDirsEffective();
+
+	CInternalPathContext internalContext = {
+		thePrefs::GetConfigDir(),
+		thePrefs::GetTempDir().GetRaw(),
+		thePrefs::GetIncomingDir().GetRaw(),
+		true,
+		unsafePref,
+		unsafeEffective
+	};
+
+	CInternalPathResult tempValidation = NormalizeInternalDir(EInternalPathKind::TempDir, thePrefs::GetTempDir().GetRaw(), internalContext);
+	if (tempValidation.m_ok) {
+		thePrefs::SetTempDir(CPath(tempValidation.m_normalizedPath));
+		internalContext.m_tempDir = tempValidation.m_normalizedPath;
+		if (tempValidation.m_isExternalToBase) {
+			AddLogLineCS(wxT("Temp directory is external to configuration base (validated)."));
+		}
+	} else {
+		wxString fallbackTemp = GetDefaultInternalPath(EInternalPathKind::TempDir, internalContext);
+		CInternalPathResult fallbackTempValidation = NormalizeInternalDir(EInternalPathKind::TempDir, fallbackTemp, internalContext);
+		if (fallbackTempValidation.m_ok) {
+			AddLogLineCS(CFormat(wxT("Rejected persisted temp directory '%s' (%s); using '%s'."))
+				% thePrefs::GetTempDir().GetRaw()
+				% InternalPathErrorToString(tempValidation.m_error)
+				% fallbackTempValidation.m_normalizedPath);
+			thePrefs::SetTempDir(CPath(fallbackTempValidation.m_normalizedPath));
+			internalContext.m_tempDir = fallbackTempValidation.m_normalizedPath;
+		}
+	}
+
+	CInternalPathResult incomingValidation = NormalizeInternalDir(EInternalPathKind::IncomingDir, thePrefs::GetIncomingDir().GetRaw(), internalContext);
+	if (incomingValidation.m_ok) {
+		thePrefs::SetIncomingDir(CPath(incomingValidation.m_normalizedPath));
+		internalContext.m_incomingDir = incomingValidation.m_normalizedPath;
+		if (incomingValidation.m_isExternalToBase) {
+			AddLogLineCS(wxT("Incoming directory is external to configuration base (validated)."));
+		}
+	} else {
+		wxString fallbackIncoming = GetDefaultInternalPath(EInternalPathKind::IncomingDir, internalContext);
+		CInternalPathResult fallbackIncomingValidation = NormalizeInternalDir(EInternalPathKind::IncomingDir, fallbackIncoming, internalContext);
+		if (fallbackIncomingValidation.m_ok) {
+			AddLogLineCS(CFormat(wxT("Rejected persisted incoming directory '%s' (%s); using '%s'."))
+				% thePrefs::GetIncomingDir().GetRaw()
+				% InternalPathErrorToString(incomingValidation.m_error)
+				% fallbackIncomingValidation.m_normalizedPath);
+			thePrefs::SetIncomingDir(CPath(fallbackIncomingValidation.m_normalizedPath));
+			internalContext.m_incomingDir = fallbackIncomingValidation.m_normalizedPath;
+		}
+	}
+
 	CPath outDir;
 	if (CheckMuleDirectory(wxT("temp"), thePrefs::GetTempDir(), thePrefs::GetConfigDir() + wxT("Temp"), outDir)) {
 		thePrefs::SetTempDir(outDir);
@@ -407,6 +504,22 @@ bool CamuleApp::OnInit()
 		thePrefs::SetIncomingDir(outDir);
 	} else {
 		return false;
+	}
+
+	internalContext.m_tempDir = thePrefs::GetTempDir().GetRaw();
+	internalContext.m_incomingDir = thePrefs::GetIncomingDir().GetRaw();
+
+	const wxString persistedOSDir = thePrefs::GetOSDir().GetRaw();
+	COSDirValidationOutcome osDirOutcome = NormalizeOSDirWithFallback(persistedOSDir, internalContext);
+	if (osDirOutcome.m_result.m_ok) {
+		if (osDirOutcome.m_usedFallback) {
+			AddLogLineCS(CFormat(wxT("Rejected persisted online signature directory '%s' (%s); using '%s'."))
+				% persistedOSDir
+				% InternalPathErrorToString(osDirOutcome.m_rejectedError)
+				% osDirOutcome.m_result.m_normalizedPath);
+		}
+
+		thePrefs::SetOSDir(CPath(osDirOutcome.m_result.m_normalizedPath));
 	}
 
 	// Initialize wx sockets (needed for http download in background with Asio sockets)
@@ -440,12 +553,21 @@ bool CamuleApp::OnInit()
 
 	// Configure EC for amuled when invoked with ec-config
 	if (ec_config) {
-		AddLogLineNS(_("\nEC configuration"));
-		CMD4Hash pw = GetPassword(false);
-		wxString secret = SecretHash::BuildPBKDF2FromMD5(pw.Encode());
-		thePrefs::SetECPass(secret);
-		thePrefs::EnableExternalConnections(true);
-		AddLogLineNS(_("Password set and external connections enabled."));
+		wxString ecReason;
+		if (!PromptManualECActivation(nullptr, _("command line (--ec-config)"), &ecReason)) {
+			AddLogLineCS(_("External connections remain disabled: --ec-config confirmation was cancelled."));
+		} else {
+			AddLogLineNS(_("\nEC configuration"));
+			CMD4Hash pw = GetPassword(false);
+			wxString secret = SecretHash::BuildPBKDF2FromMD5(pw.Encode());
+			thePrefs::SetECPass(secret);
+			thePrefs::EnableExternalConnections(true);
+			AddLogLineNS(_("Password set and external connections enabled."));
+			AddLogLineCS(CFormat(_("External connections manually enabled from %s by '%s'. Reason: %s"))
+				% _("command line (--ec-config)")
+				% wxGetUserId()
+				% ecReason);
+		}
 	}
 
 #ifndef __WINDOWS__
@@ -660,7 +782,7 @@ bool CamuleApp::OnInit()
 	return true;
 }
 
-bool CamuleApp::ReinitializeNetwork(wxString* msg)
+bool CamuleApp::ReinitializeNetwork(wxString* msg, bool forceUPnPRetry)
 {
 	bool ok = true;
 	static bool firstTime = true;
@@ -785,44 +907,111 @@ bool CamuleApp::ReinitializeNetwork(wxString* msg)
 	}
 
 #ifdef ENABLE_UPNP
-	if (thePrefs::GetUPnPEnabled()) {
-		try {
-			m_upnpMappings[0] = CUPnPPortMapping(
-				myaddr[0].Service(),
-				"TCP",
-				thePrefs::GetUPnPECEnabled(),
-				"wMule TCP External Connections Socket");
-			m_upnpMappings[1] = CUPnPPortMapping(
-				myaddr[1].Service(),
-				"UDP",
-				thePrefs::GetUPnPEnabled(),
-				"wMule UDP socket (TCP+3)");
-			m_upnpMappings[2] = CUPnPPortMapping(
-				myaddr[2].Service(),
-				"TCP",
-				thePrefs::GetUPnPEnabled(),
-				"wMule TCP Listen Socket");
-			m_upnpMappings[3] = CUPnPPortMapping(
-				myaddr[3].Service(),
-				"UDP",
-				thePrefs::GetUPnPEnabled(),
-				"wMule UDP Extended eMule Socket");
-			m_upnp = new CUPnPControlPoint(thePrefs::GetUPnPTCPPort());
-
-			wxStopWatch count; // Wait UPnP service responses for 3s before add port mappings
-			while (count.Time() < 3000 && !m_upnp->WanServiceDetected());
-
-			m_upnp->AddPortMappings(m_upnpMappings);
-		} catch(CUPnPException &e) {
-			wxString error_msg;
-			error_msg << e.what();
-			AddLogLineC(error_msg);
-			fprintf(stderr, "%s\n", (const char *)unicode2char(error_msg));
-		}
+	if (!ApplyCoreUPnP(forceUPnPRetry)) {
+		ok = false;
 	}
 #endif
 
 	return ok;
+}
+
+#ifdef ENABLE_UPNP
+void CamuleApp::BuildCoreUPnPMappings()
+{
+	if (m_upnpMappings.size() < 4) {
+		m_upnpMappings.resize(4);
+	}
+
+	m_upnpMappings[0] = CUPnPPortMapping(
+		thePrefs::ECPort(),
+		"TCP",
+		thePrefs::GetUPnPECEnabled(),
+		"wMule TCP External Connections Socket");
+	m_upnpMappings[1] = CUPnPPortMapping(
+		thePrefs::GetPort() + 3,
+		"UDP",
+		thePrefs::GetUPnPEnabled(),
+		"wMule UDP socket (TCP+3)");
+	m_upnpMappings[2] = CUPnPPortMapping(
+		thePrefs::GetPort(),
+		"TCP",
+		thePrefs::GetUPnPEnabled(),
+		"wMule TCP Listen Socket");
+	m_upnpMappings[3] = CUPnPPortMapping(
+		thePrefs::GetUDPPort(),
+		"UDP",
+		thePrefs::GetUPnPEnabled(),
+		"wMule UDP Extended eMule Socket");
+}
+
+
+void CamuleApp::ResetUPnPControlPoint()
+{
+	if (m_upnp) {
+		m_upnp->DeletePortMappings(m_upnpMappings);
+		delete m_upnp;
+		m_upnp = nullptr;
+	}
+}
+
+
+bool CamuleApp::ApplyCoreUPnP(bool forceRetry)
+{
+	const bool effectiveForceRetry = forceRetry || thePrefs::ConsumeUPnPForceRetry(wxT("core"));
+	if (!thePrefs::GetUPnPEnabled()) {
+		ResetUPnPControlPoint();
+		CUPnPLastResult disabled = thePrefs::GetLastUPnPResultCore();
+		disabled.status = UPNP_LAST_DISABLED;
+		disabled.timestampUtc = wxGetUTCTimeMillis().GetValue();
+		disabled.requested.clear();
+		disabled.mapped.clear();
+		disabled.lastError.clear();
+		disabled.failureStage = UPNP_STAGE_NONE;
+		thePrefs::SetLastUPnPResultCore(disabled);
+		return false;
+	}
+
+	BuildCoreUPnPMappings();
+	ResetUPnPControlPoint();
+
+	bool success = false;
+	try {
+		m_upnp = new CUPnPControlPoint(thePrefs::GetUPnPTCPPort());
+		wxStopWatch count;
+		while (count.Time() < 3000 && !m_upnp->WanServiceDetected()) {
+		}
+
+		const CUPnPLastResult& lastResult = thePrefs::GetLastUPnPResultCore();
+		CUPnPOperationReport report = m_upnp->ExecuteMappings(m_upnpMappings, wxT("core"), lastResult, effectiveForceRetry);
+		thePrefs::SetLastUPnPResultCore(ToUPnPLastResult(report));
+		AddLogLineC(FormatUPnPOperationSummary(report));
+		if (!report.lastError.IsEmpty() && report.status != UPNP_LAST_OK) {
+			AddLogLineCS(report.lastError);
+		}
+		if (report.status == UPNP_LAST_FAIL || report.status == UPNP_LAST_SUPPRESSED) {
+			AddLogLineCS(wxT("UPnP did not open the ports automatically. Configure manual forwarding on your router if connectivity is still blocked."));
+		}
+		success = (report.status == UPNP_LAST_OK);
+	} catch (CUPnPException& e) {
+		wxString error_msg;
+		error_msg << e.what();
+		AddLogLineC(error_msg);
+		fprintf(stderr, "%s\n", (const char*)unicode2char(error_msg));
+		success = false;
+	}
+
+	return success;
+}
+#endif // ENABLE_UPNP
+
+bool CamuleApp::RetryCoreUPnP(bool forceRetry)
+{
+#ifdef ENABLE_UPNP
+	return ApplyCoreUPnP(forceRetry);
+#else
+	wxUnusedVar(forceRetry);
+	return false;
+#endif
 }
 
 /* Original implementation by Bouc7 of the eMule Project.
@@ -1400,11 +1589,7 @@ void CamuleApp::ShutDown()
 	ECServerHandler->KillAllSockets();
 
 #ifdef ENABLE_UPNP
-	if (thePrefs::GetUPnPEnabled()) {
-		if (m_upnp) {
-			m_upnp->DeletePortMappings(m_upnpMappings);
-		}
-	}
+	ResetUPnPControlPoint();
 #endif
 
 	// saving data & stuff
@@ -1466,7 +1651,7 @@ void CamuleApp::SetPublicIP(const uint32 dwIP)
 wxString CamuleApp::GetLog(bool reset)
 {
 	wxFile logfile;
-	logfile.Open(thePrefs::GetConfigDir() + wxT("logfile"));
+	logfile.Open(theLogger.GetLogfileName());
 	if ( !logfile.IsOpened() ) {
 		return _("ERROR: can't open logfile");
 	}
@@ -1489,7 +1674,7 @@ wxString CamuleApp::GetLog(bool reset)
 	delete [] tmp_buffer;
 	if ( reset ) {
 		theLogger.CloseLogfile();
-		if (theLogger.OpenLogfile(thePrefs::GetConfigDir() + wxT("logfile"))) {
+		if (theLogger.OpenLogfile(theLogger.GetLogfileName())) {
 			AddLogLineN(_("Log has been reset"));
 		}
 		ECServerHandler->ResetAllLogs();

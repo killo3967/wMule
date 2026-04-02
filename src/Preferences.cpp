@@ -40,6 +40,7 @@
 
 #include <set>
 #include <vector>
+#include <limits>
 
 #include "amule.h"
 #include "config.h"				// Needed for PACKAGE_STRING
@@ -68,6 +69,61 @@
 #include "SharedFileList.h"			// Needed for theApp->sharedfiles->Reload()
 #endif
 
+namespace {
+
+const wxChar* LOG_FILE_PATH_KEY = wxT("/Logging/LogFilePath");
+const wxChar* LOG_FILE_SEPARATOR_KEY = wxT("/Logging/LogFileSeparator");
+const wxChar* LOG_FILE_DEFAULT_SEPARATOR = wxT(";");
+
+bool ResolveLogfilePath(const wxString& templatePath, wxString& normalizedPath, wxString* failureReason)
+{
+	const wxString expandedPath = wxExpandEnvVars(templatePath);
+	if (expandedPath.IsEmpty()) {
+		if (failureReason) {
+			*failureReason = wxT("expanded path is empty");
+		}
+		return false;
+	}
+
+	wxString validatedPath;
+	if (!NormalizeAbsoluteFilePathNoTraversal(expandedPath, validatedPath)) {
+		if (failureReason) {
+			*failureReason = wxT("path is not absolute or contains traversal");
+		}
+		return false;
+	}
+
+	const CPath parentDir = CPath(validatedPath).GetPath();
+	if (!parentDir.IsDir(CPath::readwritable)) {
+		if (!parentDir.DirExists() && !CPath::MakeDir(parentDir)) {
+			if (failureReason) {
+				*failureReason = wxT("unable to create parent directory");
+			}
+			return false;
+		}
+		if (!parentDir.IsDir(CPath::readwritable)) {
+			if (failureReason) {
+				*failureReason = wxT("parent directory is not writable");
+			}
+			return false;
+		}
+	}
+
+	normalizedPath = validatedPath;
+	return true;
+}
+
+wxString ResolveDefaultLogfilePath()
+{
+	wxString expandedDefault = wxExpandEnvVars(CPreferences::GetDefaultLogFilePathTemplate());
+	if (expandedDefault.IsEmpty()) {
+		expandedDefault = CPreferences::GetConfigDir() + wxT("wmule.log");
+	}
+	return expandedDefault;
+}
+
+} // namespace
+
 // Needed for IP filtering prefs
 #include "ClientList.h"
 #include "ServerList.h"
@@ -84,6 +140,9 @@ CPreferences::CFGMap	CPreferences::s_CfgList;
 CPreferences::CFGList	CPreferences::s_MiscList;
 
 wxString	CPreferences::s_configDir;
+wxString	CPreferences::s_logFilePath;
+wxString	CPreferences::s_logFileSeparator;
+wxString	CPreferences::s_effectiveLogFilePath;
 
 /* Proxy */
 CProxyData	CPreferences::s_ProxyData;
@@ -106,10 +165,14 @@ bool		CPreferences::s_UPnPEnabled;
 bool		CPreferences::s_UPnPECEnabled;
 bool		CPreferences::s_UPnPWebServerEnabled;
 uint16		CPreferences::s_UPnPTCPPort;
+CUPnPLastResult	CPreferences::s_lastUPnPResultCore;
+CUPnPLastResult	CPreferences::s_lastUPnPResultWeb;
 bool		CPreferences::s_autoserverlist;
 bool		CPreferences::s_deadserver;
 CPath		CPreferences::s_incomingdir;
 CPath		CPreferences::s_tempdir;
+bool		CPreferences::s_allowUnsafeInternalDirs;
+bool		CPreferences::s_allowUnsafeInternalDirsSessionGate;
 bool		CPreferences::s_ICH;
 uint8		CPreferences::s_depth3D;
 bool		CPreferences::s_scorsystem;
@@ -433,11 +496,45 @@ public:
 		Cfg_Str::LoadFromFile(cfg);
 
 		m_real_path = CPath::FromUniv(m_temp_path);
-		wxString normalized;
-		if (NormalizeAbsolutePath(m_real_path.GetRaw(), normalized)) {
-			m_real_path = CPath(normalized);
-			m_temp_path = normalized;
+		bool allowUnsafePreference = thePrefs::GetAllowUnsafeInternalDirs();
+		if (cfg) {
+			cfg->Read(wxT("/eMule/AllowUnsafeInternalDirs"), &allowUnsafePreference, allowUnsafePreference);
 		}
+		const bool allowUnsafeEffective = allowUnsafePreference && thePrefs::AllowUnsafeInternalDirsSessionGate();
+
+		CInternalPathContext context = {
+			thePrefs::GetConfigDir(),
+			thePrefs::GetTempDir().GetRaw(),
+			thePrefs::GetIncomingDir().GetRaw(),
+			true,
+			allowUnsafePreference,
+			allowUnsafeEffective
+		};
+
+		EInternalPathKind kind = EInternalPathKind::ConfigDir;
+		ResolveInternalPathKind(GetKey(), kind);
+		CInternalPathResult result = NormalizePreferencePathForLoad(GetKey(), m_real_path.GetRaw(), context);
+		if (result.m_ok) {
+			m_real_path = CPath(result.m_normalizedPath);
+			m_temp_path = result.m_normalizedPath;
+			if (result.m_isExternalToBase) {
+				AddLogLineCS(CFormat(wxT("Accepted external %s '%s' (validated).")) % GetKey() % result.m_normalizedPath);
+			}
+			return;
+		}
+
+		wxString fallback = GetDefaultInternalPath(kind, context);
+		CInternalPathResult fallbackResult = NormalizeInternalDir(kind, fallback, context);
+		if (fallbackResult.m_ok) {
+		AddLogLineCS(CFormat(wxT("Rejected %s from config '%s' (%s); using '%s'"))
+			% GetKey() % m_temp_path % InternalPathErrorToString(result.m_error) % fallbackResult.m_normalizedPath);
+			m_real_path = CPath(fallbackResult.m_normalizedPath);
+			m_temp_path = fallbackResult.m_normalizedPath;
+			return;
+		}
+
+	AddLogLineCS(CFormat(wxT("Rejected %s from config '%s' (%s); keeping previous value"))
+		% GetKey() % m_temp_path % InternalPathErrorToString(result.m_error));
 	}
 
 
@@ -462,13 +559,33 @@ public:
 	virtual bool TransferFromWindow()
 	{
 		if (Cfg_Str::TransferFromWindow()) {
-			wxString normalized;
-			if (NormalizeAbsolutePath(m_temp_path, normalized)) {
-				m_real_path = CPath(normalized);
-				m_temp_path = normalized;
+			bool allowUnsafePreference = thePrefs::GetAllowUnsafeInternalDirs();
+#ifndef AMULE_DAEMON
+			if (wxCheckBox* toggle = wxDynamicCast(wxWindow::FindWindowById(IDC_ALLOWUNSAFEINTERNALDIRS), wxCheckBox)) {
+				allowUnsafePreference = toggle->IsChecked();
+			}
+#endif
+			const bool allowUnsafeEffective = allowUnsafePreference && thePrefs::AllowUnsafeInternalDirsSessionGate();
+			CInternalPathContext context = {
+				thePrefs::GetConfigDir(),
+				thePrefs::GetTempDir().GetRaw(),
+				thePrefs::GetIncomingDir().GetRaw(),
+				true,
+				allowUnsafePreference,
+				allowUnsafeEffective
+			};
+			EInternalPathKind kind = EInternalPathKind::ConfigDir;
+			ResolveInternalPathKind(GetKey(), kind);
+			CInternalPathResult result = NormalizeInternalDir(kind, m_temp_path, context);
+			if (result.m_ok) {
+				m_real_path = CPath(result.m_normalizedPath);
+				m_temp_path = result.m_normalizedPath;
+				if (result.m_isExternalToBase) {
+					AddLogLineCS(CFormat(wxT("Accepted external %s '%s' (validated).")) % GetKey() % result.m_normalizedPath);
+				}
 				return true;
 			}
-			wxString msg = CFormat(_("The path '%s' is not a valid absolute directory.")) % m_temp_path;
+			wxString msg = CFormat(_("The path '%s' is not allowed (%s).")) % m_temp_path % InternalPathErrorToString(result.m_error);
 			theApp->ShowAlert(msg, _("Invalid directory"), wxOK | wxICON_ERROR);
 			m_temp_path = m_real_path.GetRaw();
 		}
@@ -949,6 +1066,96 @@ public:
 };
 
 
+wxString CPreferences::GetDefaultLogFilePathTemplate()
+{
+	return wxT("%APPDATA%\\wMule\\wmule.log");
+}
+
+
+const wxString& CPreferences::GetLogFilePath()
+{
+	return s_effectiveLogFilePath;
+}
+
+
+void CPreferences::SetLogFilePath(const wxString& path)
+{
+	s_logFilePath = path;
+	s_effectiveLogFilePath = path;
+}
+
+
+const wxString& CPreferences::GetLogFileSeparator()
+{
+	return s_logFileSeparator;
+}
+
+
+void CPreferences::SetLogFileSeparator(const wxString& separator)
+{
+	s_logFileSeparator = separator.IsEmpty() ? wxString(LOG_FILE_DEFAULT_SEPARATOR) : separator;
+}
+
+
+bool CPreferences::BootstrapLoggingConfig(wxConfigBase* cfg, wxString* warning)
+{
+	if (!cfg) {
+		if (warning) {
+			*warning = wxT("logger configuration unavailable");
+		}
+		return false;
+	}
+
+	bool wroteDefaults = false;
+	wxString pathTemplate;
+	if (!cfg->Read(LOG_FILE_PATH_KEY, &pathTemplate) || pathTemplate.IsEmpty()) {
+		pathTemplate = GetDefaultLogFilePathTemplate();
+		cfg->Write(LOG_FILE_PATH_KEY, pathTemplate);
+		wroteDefaults = true;
+	}
+
+	wxString separator;
+	if (!cfg->Read(LOG_FILE_SEPARATOR_KEY, &separator) || separator.IsEmpty()) {
+		separator = wxString(LOG_FILE_DEFAULT_SEPARATOR);
+		cfg->Write(LOG_FILE_SEPARATOR_KEY, separator);
+		wroteDefaults = true;
+	}
+
+	if (wroteDefaults) {
+		cfg->Flush();
+	}
+
+	s_logFilePath = pathTemplate;
+	SetLogFileSeparator(separator);
+
+	wxString failureReason;
+	bool pathValid = ResolveLogfilePath(pathTemplate, s_effectiveLogFilePath, &failureReason);
+
+	if (!pathValid) {
+		const wxString fallbackTemplate = GetDefaultLogFilePathTemplate();
+		if (!ResolveLogfilePath(fallbackTemplate, s_effectiveLogFilePath, nullptr)) {
+			const wxString expandedFallback = ResolveDefaultLogfilePath();
+			if (!ResolveLogfilePath(expandedFallback, s_effectiveLogFilePath, nullptr)) {
+				s_effectiveLogFilePath = GetConfigDir() + wxT("wmule.log");
+			}
+		}
+
+		if (warning) {
+			const wxString effectivePath = s_effectiveLogFilePath.IsEmpty()
+				? wxString(wxT("<unset>"))
+				: s_effectiveLogFilePath;
+			*warning = failureReason.IsEmpty()
+				? CFormat(wxT("logfile path invalid; using default: %s")) % effectivePath
+				: CFormat(wxT("logfile path invalid (%s); using default: %s")) % failureReason % effectivePath;
+		}
+	} else if (warning) {
+		warning->Clear();
+	}
+
+	return pathValid;
+}
+
+
 /// new implementation
 CPreferences::CPreferences()
 {
@@ -1084,7 +1291,7 @@ void CPreferences::BuildItemList( const wxString& appdir )
 	NewCfgItem(IDC_UPDATESERVERCLIENT,	(new Cfg_Bool( wxT("/eMule/AddServerListFromClient"), s_addserversfromclient, false )));
 	NewCfgItem(IDC_SAFESERVERCONNECT,	(new Cfg_Bool( wxT("/eMule/SafeServerConnect"), s_safeServerConnect, false )));
 	NewCfgItem(IDC_AUTOCONNECTSTATICONLY,	(new Cfg_Bool( wxT("/eMule/AutoConnectStaticOnly"), s_autoconnectstaticonly, false )));
-	NewCfgItem(IDC_UPNP_ENABLED,	(new Cfg_Bool( wxT("/eMule/UPnPEnabled"), s_UPnPEnabled, false )));
+	NewCfgItem(IDC_UPNP_ENABLED,	(new Cfg_Bool( wxT("/eMule/UPnPEnabled"), s_UPnPEnabled, true )));
 	NewCfgItem(IDC_UPNPTCPPORT,	(MkCfg_Int( wxT("/eMule/UPnPTCPPort"), s_UPnPTCPPort, 50000 )));
 	NewCfgItem(IDC_SMARTIDCHECK,	(new Cfg_Bool( wxT("/eMule/SmartIdCheck"), s_smartidcheck, true )));
 	// Enabled networks
@@ -1109,6 +1316,7 @@ void CPreferences::BuildItemList( const wxString& appdir )
 		wxString incpath = appdir + wxT("Incoming");
 	#endif
 	NewCfgItem(IDC_INCFILES,	(new Cfg_Path(  wxT("/eMule/IncomingDir"), s_incomingdir, incpath )));
+	NewCfgItem(IDC_ALLOWUNSAFEINTERNALDIRS, (new Cfg_Bool( wxT("/eMule/AllowUnsafeInternalDirs"), s_allowUnsafeInternalDirs, false )));
 
 	NewCfgItem(IDC_ICH,		(new Cfg_Bool( wxT("/eMule/ICH"), s_ICH, true )));
 	NewCfgItem(IDC_AICHTRUST,	(new Cfg_Bool( wxT("/eMule/AICHTrust"), s_AICHTrustEveryHash, false )));
@@ -1327,6 +1535,233 @@ void CPreferences::EraseItemList()
 }
 
 
+namespace {
+
+wxString BuildUPnPBasePath(const wxString& scope)
+{
+	return wxT("/UPnP/LastResult/") + scope;
+}
+
+wxString BuildUPnPMappingsPath(const wxString& base, long index)
+{
+	return wxString::Format(wxT("%s/%ld/"), base.c_str(), index);
+}
+
+void ReadUPnPMappings(wxConfigBase* cfg, const wxString& baseKey, std::vector<CUPnPPersistedMapping>& target)
+{
+	target.clear();
+	if (!cfg) {
+		return;
+	}
+
+	long count = 0;
+	cfg->Read(baseKey + wxT("Count"), &count, 0l);
+	for (long i = 0; i < count; ++i) {
+		CUPnPPersistedMapping mapping;
+		const wxString prefix = BuildUPnPMappingsPath(baseKey, i);
+		mapping.service = cfg->Read(prefix + wxT("Service"), wxEmptyString);
+		mapping.protocol = cfg->Read(prefix + wxT("Protocol"), wxEmptyString);
+
+		long internalPort = 0;
+		cfg->Read(prefix + wxT("InternalPort"), &internalPort, 0l);
+		mapping.internalPort = static_cast<uint16>(internalPort);
+
+		long externalPort = 0;
+		cfg->Read(prefix + wxT("ExternalPort"), &externalPort, 0l);
+		mapping.externalPort = static_cast<uint16>(externalPort);
+
+		bool enabled = true;
+		cfg->Read(prefix + wxT("Enabled"), &enabled, true);
+		mapping.enabled = enabled;
+
+		target.push_back(mapping);
+	}
+}
+
+void WriteUPnPMappings(wxConfigBase* cfg, const wxString& baseKey, const std::vector<CUPnPPersistedMapping>& mappings)
+{
+	if (!cfg) {
+		return;
+	}
+
+	cfg->Write(baseKey + wxT("Count"), static_cast<long>(mappings.size()));
+	for (size_t i = 0; i < mappings.size(); ++i) {
+		const wxString prefix = BuildUPnPMappingsPath(baseKey, static_cast<long>(i));
+		cfg->Write(prefix + wxT("Service"), mappings[i].service);
+		cfg->Write(prefix + wxT("Protocol"), mappings[i].protocol);
+		cfg->Write(prefix + wxT("InternalPort"), static_cast<long>(mappings[i].internalPort));
+		cfg->Write(prefix + wxT("ExternalPort"), static_cast<long>(mappings[i].externalPort));
+		cfg->Write(prefix + wxT("Enabled"), mappings[i].enabled);
+	}
+}
+
+} // unnamed namespace
+
+
+void CPreferences::NormalizeUPnPLastResult(const wxString& scope, CUPnPLastResult& target)
+{
+	target.scope = scope;
+	if (target.timestampUtc < 0) {
+		target.timestampUtc = 0;
+	}
+	const wxLongLong_t kMaxTimestampUtc = static_cast<wxLongLong_t>(0x7FFFFFFF) * 1000;
+	if (target.timestampUtc > kMaxTimestampUtc) {
+		target.timestampUtc = 0;
+	}
+	if (target.status < UPNP_LAST_UNKNOWN || target.status > UPNP_LAST_SUPPRESSED) {
+		target.status = UPNP_LAST_UNKNOWN;
+	}
+	if (target.failureStage < UPNP_STAGE_NONE || target.failureStage > UPNP_STAGE_MAPPING_FALLBACK_FAILED) {
+		target.failureStage = UPNP_STAGE_NONE;
+	}
+}
+
+
+CUPnPLastResult& CPreferences::ResolveUPnPScope(const wxString& scope)
+{
+	if (scope.CmpNoCase(wxT("webserver")) == 0) {
+		return s_lastUPnPResultWeb;
+	}
+	return s_lastUPnPResultCore;
+}
+
+
+void CPreferences::LoadUPnPLastResult(const wxString& scope, CUPnPLastResult& target, wxConfigBase* cfg)
+{
+	NormalizeUPnPLastResult(scope, target);
+	target.retryCount = 0;
+	target.routerId.clear();
+	target.routerName.clear();
+	target.adapterId.clear();
+	target.lastError.clear();
+	target.requested.clear();
+	target.mapped.clear();
+	target.failureStage = UPNP_STAGE_NONE;
+	target.suppressedUntilSessionEnd = false;
+
+	if (!cfg) {
+		return;
+	}
+
+	const wxString base = BuildUPnPBasePath(scope);
+	wxLongLong_t timestamp = 0;
+	cfg->Read(base + wxT("/TimestampUtc"), &timestamp, static_cast<wxLongLong_t>(0));
+	target.timestampUtc = static_cast<int64>(timestamp);
+
+	target.routerId = cfg->Read(base + wxT("/RouterId"), wxEmptyString);
+	target.routerName = cfg->Read(base + wxT("/RouterName"), wxEmptyString);
+	target.adapterId = cfg->Read(base + wxT("/AdapterId"), wxEmptyString);
+
+	long status = UPNP_LAST_UNKNOWN;
+	cfg->Read(base + wxT("/Status"), &status, static_cast<long>(UPNP_LAST_UNKNOWN));
+	target.status = static_cast<CUPnPLastStatus>(status);
+
+	long failureStage = UPNP_STAGE_NONE;
+	cfg->Read(base + wxT("/FailureStage"), &failureStage, static_cast<long>(UPNP_STAGE_NONE));
+	target.failureStage = static_cast<CUPnPFailureStage>(failureStage);
+
+	long retryCount = 0;
+	cfg->Read(base + wxT("/RetryCount"), &retryCount, 0l);
+	target.retryCount = static_cast<uint32>(retryCount);
+
+	target.lastError = cfg->Read(base + wxT("/LastError"), wxEmptyString);
+	bool suppressed = false;
+	cfg->Read(base + wxT("/SuppressedUntilSessionEnd"), &suppressed, false);
+	target.suppressedUntilSessionEnd = suppressed;
+
+	ReadUPnPMappings(cfg, base + wxT("/Requested"), target.requested);
+	ReadUPnPMappings(cfg, base + wxT("/Mapped"), target.mapped);
+	NormalizeUPnPLastResult(scope, target);
+}
+
+
+void CPreferences::LoadUPnPLastResults(wxConfigBase* cfg)
+{
+	LoadUPnPLastResult(wxT("core"), s_lastUPnPResultCore, cfg);
+	LoadUPnPLastResult(wxT("webserver"), s_lastUPnPResultWeb, cfg);
+}
+
+
+void CPreferences::SaveUPnPLastResult(const CUPnPLastResult& result)
+{
+	wxConfigBase* cfg = wxConfigBase::Get();
+	if (!cfg) {
+		return;
+	}
+
+	const wxString base = BuildUPnPBasePath(result.scope);
+	cfg->Write(base + wxT("/TimestampUtc"), static_cast<wxLongLong_t>(result.timestampUtc));
+	cfg->Write(base + wxT("/RouterId"), result.routerId);
+	cfg->Write(base + wxT("/RouterName"), result.routerName);
+	cfg->Write(base + wxT("/AdapterId"), result.adapterId);
+	cfg->Write(base + wxT("/Status"), static_cast<long>(result.status));
+	cfg->Write(base + wxT("/FailureStage"), static_cast<long>(result.failureStage));
+	cfg->Write(base + wxT("/RetryCount"), static_cast<long>(result.retryCount));
+	cfg->Write(base + wxT("/LastError"), result.lastError);
+	cfg->Write(base + wxT("/SuppressedUntilSessionEnd"), result.suppressedUntilSessionEnd);
+	WriteUPnPMappings(cfg, base + wxT("/Requested"), result.requested);
+	WriteUPnPMappings(cfg, base + wxT("/Mapped"), result.mapped);
+	cfg->Flush();
+}
+
+
+void CPreferences::SetLastUPnPResultCore(const CUPnPLastResult& result)
+{
+	s_lastUPnPResultCore = result;
+	NormalizeUPnPLastResult(wxT("core"), s_lastUPnPResultCore);
+	SaveUPnPLastResult(s_lastUPnPResultCore);
+}
+
+
+void CPreferences::SetLastUPnPResultWeb(const CUPnPLastResult& result)
+{
+	s_lastUPnPResultWeb = result;
+	NormalizeUPnPLastResult(wxT("webserver"), s_lastUPnPResultWeb);
+	SaveUPnPLastResult(s_lastUPnPResultWeb);
+}
+
+
+void CPreferences::ClearUPnPSuppression(const wxString& scope)
+{
+	CUPnPLastResult& target = ResolveUPnPScope(scope);
+	NormalizeUPnPLastResult(scope, target);
+	target.suppressedUntilSessionEnd = false;
+	SaveUPnPLastResult(target);
+}
+
+
+void CPreferences::RequestUPnPForceRetry(const wxString& scope)
+{
+	wxConfigBase* cfg = wxConfigBase::Get();
+	if (!cfg) {
+		return;
+	}
+
+	const wxString key = BuildUPnPBasePath(scope) + wxT("/ForceRetry");
+	cfg->Write(key, true);
+	cfg->Flush();
+}
+
+
+bool CPreferences::ConsumeUPnPForceRetry(const wxString& scope)
+{
+	wxConfigBase* cfg = wxConfigBase::Get();
+	if (!cfg) {
+		return false;
+	}
+
+	const wxString key = BuildUPnPBasePath(scope) + wxT("/ForceRetry");
+	bool forceRetry = false;
+	cfg->Read(key, &forceRetry, false);
+	if (forceRetry) {
+		cfg->Write(key, false);
+		cfg->Flush();
+	}
+
+	return forceRetry;
+}
+
+
 void CPreferences::LoadAllItems(wxConfigBase* cfg)
 {
 #ifndef CLIENT_GUI
@@ -1346,8 +1781,19 @@ void CPreferences::LoadAllItems(wxConfigBase* cfg)
 		cfg->DeleteEntry(wxT("/eMule/ExecOnCompletionCommand"));
 	}
 #endif
+	#ifdef IDC_ALLOWUNSAFEINTERNALDIRS
+	CFGMap::iterator unsafePrefIt = s_CfgList.find(IDC_ALLOWUNSAFEINTERNALDIRS);
+	if (unsafePrefIt != s_CfgList.end()) {
+		unsafePrefIt->second->LoadFromFile(cfg);
+	}
+	#endif
 	CFGMap::iterator it_a = s_CfgList.begin();
 	for ( ; it_a != s_CfgList.end(); ++it_a ) {
+		#ifdef IDC_ALLOWUNSAFEINTERNALDIRS
+		if (it_a->first == IDC_ALLOWUNSAFEINTERNALDIRS) {
+			continue;
+		}
+		#endif
 		it_a->second->LoadFromFile( cfg );
 	}
 
@@ -1388,6 +1834,8 @@ void CPreferences::LoadAllItems(wxConfigBase* cfg)
 	}
 #endif
 
+	LoadUPnPLastResults(cfg);
+
 	// Now do some post-processing / sanity checking on the values we just loaded
 #ifndef CLIENT_GUI
 	CheckUlDlRatio();
@@ -1410,6 +1858,9 @@ void CPreferences::SaveAllItems(wxConfigBase* cfg)
 	CFGList::iterator it_b = s_MiscList.begin();
 	for ( ; it_b != s_MiscList.end(); ++it_b )
 		(*it_b)->SaveToFile( cfg );
+
+	cfg->Write(LOG_FILE_PATH_KEY, s_logFilePath);
+	cfg->Write(LOG_FILE_SEPARATOR_KEY, s_logFileSeparator);
 
 
 // Save debug-categories

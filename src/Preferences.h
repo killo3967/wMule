@@ -31,6 +31,7 @@
 #include <wx/arrstr.h>			// Needed for wxArrayString
 
 #include <map>
+#include <vector>
 
 #include "Proxy.h"
 #include "OtherStructs.h"
@@ -64,6 +65,46 @@ enum AllCategoryFilter {
 	acfPictures,
 	acfText,
 	acfActive
+};
+
+struct CUPnPPersistedMapping {
+	wxString service;
+	wxString protocol;
+	uint16 internalPort;
+	uint16 externalPort;
+	bool enabled;
+};
+
+enum CUPnPLastStatus {
+	UPNP_LAST_UNKNOWN = 0,
+	UPNP_LAST_OK,
+	UPNP_LAST_FAIL,
+	UPNP_LAST_DISABLED,
+	UPNP_LAST_SUPPRESSED
+};
+
+enum CUPnPFailureStage {
+	UPNP_STAGE_NONE = 0,
+	UPNP_STAGE_DISCOVERY_EMPTY,
+	UPNP_STAGE_DISCOVERY_FILTERED,
+	UPNP_STAGE_IGD_INVALID,
+	UPNP_STAGE_MAPPING_PRIMARY_FAILED,
+	UPNP_STAGE_MAPPING_FALLBACK_FAILED
+};
+
+struct CUPnPLastResult {
+	wxString scope;
+	int64 timestampUtc;
+	wxString routerId;
+	wxString routerName;
+	wxString adapterId;
+	std::vector<CUPnPPersistedMapping> requested;
+	std::vector<CUPnPPersistedMapping> mapped;
+	uint32 retryCount;
+	wxString lastError;
+	CUPnPFailureStage failureStage;
+	CUPnPLastStatus status;
+	bool suppressedUntilSessionEnd;
 };
 
 /**
@@ -200,6 +241,13 @@ public:
 	static const wxString&	GetConfigDir()			{ return s_configDir; }
 	static void		SetConfigDir(const wxString& dir) { s_configDir = dir; }
 
+	static const wxString&	GetLogFilePath();
+	static void		SetLogFilePath(const wxString& path);
+	static const wxString&	GetLogFileSeparator();
+	static void		SetLogFileSeparator(const wxString& separator);
+	static wxString		GetDefaultLogFilePathTemplate();
+	static bool		BootstrapLoggingConfig(wxConfigBase* cfg, wxString* warning = nullptr);
+
 	static bool		Score()				{ return s_scorsystem; }
 	static void		SetScoreSystem(bool val)	{ s_scorsystem = val; }
 	static bool		Reconnect()			{ return s_reconnect; }
@@ -220,6 +268,11 @@ public:
 	static void		SetUDPDisable(bool val)		{ s_UDPEnable = !val; }
 	static const CPath&	GetIncomingDir()		{ return s_incomingdir; }
 	static void		SetIncomingDir(const CPath& dir){ s_incomingdir = dir; }
+	static bool		GetAllowUnsafeInternalDirs()	{ return s_allowUnsafeInternalDirs; }
+	static void		SetAllowUnsafeInternalDirs(bool val) { s_allowUnsafeInternalDirs = val; }
+	static void		SetAllowUnsafeInternalDirsSessionGate(bool val) { s_allowUnsafeInternalDirsSessionGate = val; }
+	static bool		AllowUnsafeInternalDirsSessionGate() { return s_allowUnsafeInternalDirsSessionGate; }
+	static bool		AllowUnsafeInternalDirsEffective() { return s_allowUnsafeInternalDirs && s_allowUnsafeInternalDirsSessionGate; }
 	static const CPath&	GetTempDir()			{ return s_tempdir; }
 	static void		SetTempDir(const CPath& dir)	{ s_tempdir = dir; }
 	static const CMD4Hash&	GetUserHash()			{ return s_userhash; }
@@ -367,6 +420,13 @@ public:
 	static void		SetUPnPWebServerEnabled(bool val){ s_UPnPWebServerEnabled = val; }
 	static uint16		GetUPnPTCPPort()		{ return s_UPnPTCPPort; }
 	static void		SetUPnPTCPPort(uint16 val)	{ s_UPnPTCPPort = val; }
+	static const CUPnPLastResult& GetLastUPnPResultCore()	{ return s_lastUPnPResultCore; }
+	static const CUPnPLastResult& GetLastUPnPResultWeb()	{ return s_lastUPnPResultWeb; }
+	static void		SetLastUPnPResultCore(const CUPnPLastResult& result);
+	static void		SetLastUPnPResultWeb(const CUPnPLastResult& result);
+	static void		ClearUPnPSuppression(const wxString& scope);
+	static void		RequestUPnPForceRetry(const wxString& scope);
+	static bool		ConsumeUPnPForceRetry(const wxString& scope);
 	static bool		IsManualHighPrio()		{ return s_bmanualhighprio; }
 	static void		SetManualHighPrio(bool val)	{ s_bmanualhighprio = val; }
 	void			LoadCats();
@@ -471,6 +531,7 @@ public:
 	static bool		VerticalToolbar()		{ return s_ToolbarOrientation; }
 
 	static const CPath&	GetOSDir()			{ return s_OSDirectory; }
+	static void		SetOSDir(const CPath& dir)	{ s_OSDirectory = dir; }
 	static uint16		GetOSUpdate()			{ return s_OSUpdate; }
 
 	static uint8		GetToolTipDelay()		{ return s_iToolDelayTime; }
@@ -483,6 +544,11 @@ public:
 
 	static void LoadAllItems(wxConfigBase* cfg);
 	static void SaveAllItems(wxConfigBase* cfg);
+	static void LoadUPnPLastResults(wxConfigBase* cfg);
+	static void LoadUPnPLastResult(const wxString& scope, CUPnPLastResult& target, wxConfigBase* cfg);
+	static void SaveUPnPLastResult(const CUPnPLastResult& result);
+	static CUPnPLastResult& ResolveUPnPScope(const wxString& scope);
+	static void NormalizeUPnPLastResult(const wxString& scope, CUPnPLastResult& target);
 
 #ifndef __SVN__
 	static bool		ShowVersionOnTitle()		{ return s_showVersionOnTitle; }
@@ -606,6 +672,9 @@ private:
 
 protected:
 	static wxString	s_configDir;
+	static wxString	s_logFilePath;
+	static wxString	s_logFileSeparator;
+	static wxString	s_effectiveLogFilePath;
 
 ////////////// USER
 	static wxString	s_nick;
@@ -630,6 +699,8 @@ protected:
 	static bool	s_UPnPECEnabled;
 	static bool	s_UPnPWebServerEnabled;
 	static uint16	s_UPnPTCPPort;
+	static CUPnPLastResult s_lastUPnPResultCore;
+	static CUPnPLastResult s_lastUPnPResultWeb;
 
 ////////////// PROXY
 	static CProxyData s_ProxyData;
@@ -641,6 +712,8 @@ protected:
 ////////////// FILES
 	static CPath	s_incomingdir;
 	static CPath	s_tempdir;
+	static bool	s_allowUnsafeInternalDirs;
+	static bool	s_allowUnsafeInternalDirsSessionGate;
 	static bool	s_ICH;
 	static bool	s_AICHTrustEveryHash;
 

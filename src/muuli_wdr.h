@@ -208,6 +208,8 @@ wxSizer *PreferencesGeneralTab( wxWindow *parent, bool call_fit = true, bool set
 #define IDC_UPNP_ENABLED 10136
 #define IDC_UPNPTCPPORTTEXT 10137
 #define IDC_UPNPTCPPORT 10138
+#define IDC_UPNP_STATUS_CORE 10343
+#define IDC_UPNP_RETRY_CORE 10344
 #define IDC_ADDRESS 10139
 #define ID_TEXT 10140
 #define IDC_MAXSOURCEPERFILE 10141
@@ -252,6 +254,8 @@ wxSizer *PreferencesFilesTab( wxWindow *parent, bool call_fit = true, bool set_s
 #define IDC_SELTEMPDIR 10174
 #define IDC_SHARESELECTOR 10175
 #define IDC_SHAREHIDDENFILES 10176
+#define IDC_ALLOWUNSAFEINTERNALDIRS 10343
+#define IDC_UNSAFEINTERNALDIRS_NOTE 10344
 wxSizer *PreferencesDirectoriesTab( wxWindow *parent, bool call_fit = true, bool set_sizer = true );
 
 #define IDC_SLIDERINFO 10177
@@ -310,6 +314,8 @@ wxSizer *PreferencesGuiTweaksTab( wxWindow *parent, bool call_fit = true, bool s
 #define IDC_UPNP_WEBSERVER_ENABLED 10224
 #define IDC_WEBUPNPTCPPORTTEXT 10225
 #define IDC_WEBUPNPTCPPORT 10226
+#define IDC_UPNP_STATUS_WEB 10345
+#define IDC_UPNP_RETRY_WEB 10346
 #define IDC_WEB_REFRESH_TIMEOUT 10227
 #define IDC_WEB_GZIP 10228
 wxSizer *PreferencesRemoteControlsTab( wxWindow *parent, bool call_fit = true, bool set_sizer = true );

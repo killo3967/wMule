@@ -33,6 +33,12 @@
 #include <wx/sstream.h>
 #include <wx/filename.h>
 
+namespace {
+
+const wxChar* PERSISTENT_DEFAULT_SEPARATOR = wxT(";");
+
+}
+
 
 DEFINE_LOCAL_EVENT_TYPE(MULE_EVT_LOGLINE)
 
@@ -115,6 +121,12 @@ void CLogger::SetEnabled( DebugType type, bool enabled )
 	} else {
 		wxFAIL;
 	}
+}
+
+
+void CLogger::ConfigurePersistentOutput(const wxString& separator)
+{
+	m_persistentSeparator = separator.IsEmpty() ? wxString(PERSISTENT_DEFAULT_SEPARATOR) : separator;
 }
 
 
@@ -224,51 +236,55 @@ void CLogger::DoLines(const wxString & lines, bool critical, bool toStdout, bool
 	// Remove newspace at end
 	wxString bufferline = lines.Strip(wxString::trailing);
 
-	// Create the timestamp
-	wxString stamp = wxDateTime::Now().FormatISODate() + wxT(" ") + wxDateTime::Now().FormatISOTime()
+	const wxDateTime now = wxDateTime::Now();
+	const wxString baseStamp = now.FormatISODate() + wxT(" ") + now.FormatISOTime();
 #ifdef CLIENT_GUI
-					+ wxT(" (remote-GUI): ");
+	const wxString guiStamp = baseStamp + wxT(" (remote-GUI): ");
+	const wxString persistentStamp = baseStamp + wxT(" (remote-GUI)");
 #else
-					+ wxT(": ");
+	const wxString guiStamp = baseStamp + wxT(": ");
+	const wxString persistentStamp = baseStamp;
 #endif
 
 	// critical lines get a ! prepended, ordinary lines a blank
 	// logfile-only lines get a . to prevent transmission on EC
-	wxString prefix = !toGUI ? wxT(".") : (critical ? wxT("!") : wxT(" "));
+	const wxString prefix = !toGUI ? wxT(".") : (critical ? wxT("!") : wxT(" "));
 
 	if ( bufferline.IsEmpty() ) {
 		// If it's empty we just write a blank line with no timestamp.
-		DoLine(wxT(" \n"), toStdout, toGUI);
+		DoLine(wxT(" \n"), wxT(" \n"), toStdout, toGUI);
 	} else {
 		// Split multi-line messages into individual lines
 		wxStringTokenizer tokens( bufferline, wxT("\n") );
 		while ( tokens.HasMoreTokens() ) {
-			wxString fullline = prefix + stamp + tokens.GetNextToken() + wxT("\n");
-			DoLine(fullline, toStdout, toGUI);
+			const wxString token = tokens.GetNextToken();
+			const wxString guiLine = prefix + guiStamp + token + wxT("\n");
+			const wxString persistentLine = prefix + persistentStamp + m_persistentSeparator + token + wxT("\n");
+			DoLine(persistentLine, guiLine, toStdout, toGUI);
 		}
 	}
 }
 
 
-void CLogger::DoLine(const wxString & line, bool toStdout, bool GUI_ONLY(toGUI))
+void CLogger::DoLine(const wxString & persistentLine, const wxString & guiLine, bool toStdout, bool GUI_ONLY(toGUI))
 {
 	{
 		wxMutexLocker lock(m_lineLock);
 		++m_count;
 
 		// write to logfile
-		m_ApplogBuf += line;
+		m_ApplogBuf += persistentLine;
 		FlushApplog();
 
 		// write to Stdout
 		if (m_StdoutLog || toStdout) {
-			printf("%s", (const char*)unicode2char(line));
+			printf("%s", (const char*)unicode2char(persistentLine));
 		}
 	}
 #ifndef AMULE_DAEMON
 	// write to Listcontrol
 	if (toGUI) {
-		theApp->AddGuiLogLine(line);
+		theApp->AddGuiLogLine(guiLine);
 	}
 #endif
 }

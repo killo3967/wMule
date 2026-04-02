@@ -3,7 +3,7 @@
 **Project:** wMule (Windows Mule)  
 **Version:** 1.0.1  
 **Base:** aMule 2.4.0  
-**Date:** 2026-03-27  
+**Date:** 2026-03-29  
 **Author:** Tomas Platero  
 
 ---
@@ -93,22 +93,24 @@ Cerrar el bloque de hardening de rutas (Fase 2 – Opción A) y publicar un buil
 - Boost 1.90.0 (asio, filesystem, regex, signals2, thread)
 - cryptopp 2026-03-02
 - zlib 1.3.1
-- libupnp 1.18.2 (disabled by default)
+- miniupnpc 2.2.x (habilitada con `ENABLE_UPNP=ON`; el wrapper `wmule_upnp_sdk` detecta `miniupnpc::miniupnpc` o variantes exportadas por vcpkg)
 - libpng 1.6.55
 - libwebp 1.6.0
 - pcre2 10.47
 - tiff 4.7.1
 
 ### CMake Configuration Command
-```bash
-cd K:\wMule\build
-cmake .. -DCMAKE_BUILD_TYPE=Debug \
-        -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake \
-        -DENABLE_UPNP=OFF
+```powershell
+Set-Location K:\wMule\build
+cmake .. `
+    -DCMAKE_BUILD_TYPE=Debug `
+    -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+    -DENABLE_UPNP=ON
 ```
 
 ### Build Command
-```bash
+```powershell
+Set-Location K:\wMule\build
 cmake --build . --config Debug
 ```
 
@@ -117,8 +119,8 @@ cmake --build . --config Debug
 - `K:\wMule\build\src\Debug\wmulecmd.exe` (1.9 MB)
 
 ### Run Tests
-```bash
-cd K:\wMule\build
+```powershell
+Set-Location K:\wMule\build
 ctest --output-on-failure -C Debug
 ```
 
@@ -131,7 +133,7 @@ ctest --output-on-failure -C Debug
 | Variable | Value | Description |
 |----------|-------|-------------|
 | `CMAKE_BUILD_TYPE` | Debug/Release | Build configuration |
-| `ENABLE_UPNP` | OFF | UPnP support (requires cmake config fix) |
+| `ENABLE_UPNP` | ON | UPnP support (wrapper `wmule_upnp_sdk` resuelve miniupnpc) |
 | `BUILD_MONOLITHIC` | ON | Build wmule.exe |
 | `BUILD_AMULECMD` | ON | Build wmulecmd.exe |
 | `BUILD_TESTING` | ON | Build unit tests |
@@ -140,13 +142,13 @@ ctest --output-on-failure -C Debug
 
 ## Known Issues & Solutions
 
-### Issue: UPNP CMake Target Not Found
+### Issue: miniupnpc CMake Target Not Found
 **Error:**
 ```
-Target "UPNP::Shared" not found.
+Target "miniupnpc::miniupnpc" not found.
 ```
 
-**Solution:** Use `-DENABLE_UPNP=OFF` or fix CMake to add `find_package(UPNP CONFIG REQUIRED)`
+**Solution:** Instala miniupnpc vía vcpkg (`vcpkg install miniupnpc:x64-windows`). El wrapper `wmule_upnp_sdk` detecta `miniupnpc::miniupnpc`, `MINIUPNPC::miniupnpc` o `MINIUPNPC::miniupnpc-static`. Configura con `-DENABLE_UPNP=ON -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake`. Desactiva UPnP solo si no se necesita (`-DENABLE_UPNP=OFF`).
 
 ### Issue: wxWidgets Not Found by CMake
 **Error:**
@@ -219,7 +221,7 @@ From `src/include/common/ClientVersion.h`:
 ## Future Maintenance Notes
 
 1. **Do NOT rename class names** - Classes like `CamulewebApp` are intentional
-2. **UPnP support** - To enable, add `find_package(UPNP CONFIG REQUIRED)` to src/CMakeLists.txt
+2. **UPnP support** - `ENABLE_UPNP` espera `miniupnpc` vía vcpkg; `CMakeLists.txt` ya ejecuta `find_package(miniupnpc CONFIG REQUIRED)` y resuelve el target exportado.
 3. **Copyright years** - Update to current year when making changes
 4. **vcpkg packages** - May need regeneration with `vcpkg upgrade`
 5. **wxWidgets version** - Currently 3.3.1, check compatibility before upgrading

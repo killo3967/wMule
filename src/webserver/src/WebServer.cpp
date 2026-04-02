@@ -279,7 +279,14 @@ void CWebServerBase::StartServer()
 			true,
 			"wMule TCP Webserver Socket");
 		m_upnp = new CUPnPControlPoint(m_upnpTCPPort);
-		m_upnp->AddPortMappings(m_upnpMappings);
+		const CUPnPLastResult& lastResult = thePrefs::GetLastUPnPResultWeb();
+		const bool forceRetry = thePrefs::ConsumeUPnPForceRetry(wxT("webserver"));
+		CUPnPOperationReport report = m_upnp->ExecuteMappings(m_upnpMappings, wxT("webserver"), lastResult, forceRetry);
+		thePrefs::SetLastUPnPResultWeb(ToUPnPLastResult(report));
+		webInterface->Show(FormatUPnPOperationSummary(report));
+		if (!report.lastError.IsEmpty() && report.status != UPNP_LAST_OK) {
+			webInterface->Show(report.lastError);
+		}
 	}
 #endif
 

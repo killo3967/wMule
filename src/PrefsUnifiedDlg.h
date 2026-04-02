@@ -28,6 +28,8 @@
 
 #include <wx/dialog.h>		// Needed for wxDialog
 
+#include "Preferences.h"
+
 
 class Cfg_Base;
 class CDirectoryTreeCtrl;
@@ -116,6 +118,7 @@ protected:
 	void OnButtonIPFilterUpdate(wxCommandEvent &event);
 	void OnColorCategorySelected(wxCommandEvent &event);
 	void OnCheckBoxChange(wxCommandEvent &event);
+	void UpdateUnsafeDirsStatusLabel();
 	void OnPrefsPageChange(wxListEvent& event);
 	void OnToolTipDelayChange(wxSpinEvent& event);
 	void OnScrollBarChange( wxScrollEvent& event );
@@ -124,6 +127,9 @@ protected:
 	void OnUserEventSelected(wxListEvent& event);
 	void OnLanguageChoice(wxCommandEvent &event);
 	void CreateEventPanels(const int idx, const wxString& vars, wxWindow* parent);
+	void OnUPnPManualRetry(wxCommandEvent& event);
+	void UpdateUPnPStatusUI();
+	wxString BuildUPnPStatusLabel(const CUPnPLastResult& result, bool enabled) const;
 
 	void OnInitDialog( wxInitDialogEvent& evt );
 

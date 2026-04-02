@@ -34,6 +34,7 @@
 #include <common/ClientVersion.h>
 #include <common/MD5Sum.h>
 #include <common/SecretHash.h>
+#include <wx/arrstr.h>
 
 #include "ExternalConn.h"			// Interface declarations
 #include "updownclient.h"			// Needed for CUpDownClient
@@ -1636,7 +1637,9 @@ CECPacket *CECServerSocket::ProcessRequest2(const CECPacket *request)
 			response = new CEC_Prefs_Packet(request->GetTagByNameSafe(EC_TAG_SELECT_PREFS)->GetInt(), request->GetDetailLevel());
 			break;
 		case EC_OP_SET_PREFERENCES:
-			static_cast<const CEC_Prefs_Packet *>(request)->Apply();
+		{
+			wxArrayString prefErrors;
+			bool prefsOk = static_cast<const CEC_Prefs_Packet *>(request)->Apply(prefErrors);
 			theApp->glob_prefs->Save();
 			if (thePrefs::IsFilteringClients()) {
 				theApp->clientlist->FilterQueues();
@@ -1650,7 +1653,16 @@ CECPacket *CECServerSocket::ProcessRequest2(const CECPacket *request)
 			if (!thePrefs::GetNetworkKademlia() && theApp->IsConnectedKad()) {
 				theApp->StopKad();
 			}
-			response = new CECPacket(EC_OP_NOOP);
+			if (!prefsOk || !prefErrors.IsEmpty()) {
+				response = new CECPacket(EC_OP_FAILED);
+				for (size_t idx = 0; idx < prefErrors.GetCount(); ++idx) {
+					response->AddTag(CECTag(EC_TAG_STRING, prefErrors[idx]));
+				}
+			} else {
+				response = new CECPacket(EC_OP_NOOP);
+			}
+			break;
+		}
 			break;
 
 		case EC_OP_CREATE_CATEGORY:

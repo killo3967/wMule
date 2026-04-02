@@ -184,7 +184,8 @@ public:
 #if wxUSE_ON_FATAL_EXCEPTION
 	void		OnFatalException();
 #endif
-	bool		ReinitializeNetwork(wxString *msg);
+	bool		ReinitializeNetwork(wxString *msg, bool forceUPnPRetry = false);
+	bool		RetryCoreUPnP(bool forceRetry = true);
 
 	// derived classes may override those
 	virtual int InitGui(bool geometry_enable, wxString &geometry_string);
@@ -358,6 +359,12 @@ private:
 	void CheckNewVersion(uint32 result);
 
 	uint32 m_localip;
+
+#ifdef ENABLE_UPNP
+	void ResetUPnPControlPoint();
+	void BuildCoreUPnPMappings();
+	bool ApplyCoreUPnP(bool forceRetry);
+#endif
 };
 
 

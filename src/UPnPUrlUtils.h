@@ -30,7 +30,9 @@ bool ParseUrl(const std::string& url, std::string& scheme, std::string& host, ui
 bool HostToIPv4(const std::string& host, uint32_t& outAddr);
 bool IsPrivateIPv4(uint32_t ip);
 bool IsLocalIPv4Host(const std::string& host);
-bool IsSafeLanUrl(const std::string& url);
+bool IsSafeLanUrl(const std::string& url, std::string* rejectionReason = nullptr);
 bool AssignLanUrlOrClear(const char* label, const std::string& resolvedUrl, std::string& destination, std::string* outMessage = nullptr);
+using ResolveHostnameForTestFunc = bool (*)(const std::string& host, uint32_t& outAddr);
+void SetResolveHostnameForTest(ResolveHostnameForTestFunc resolver);
 
 #endif // UPNPURLUTILS_H

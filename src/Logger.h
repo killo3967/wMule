@@ -198,6 +198,8 @@ public:
 	 */
 	void SetEnabledStdoutLog(bool enabled)	{ m_StdoutLog = enabled; }
 
+	void ConfigurePersistentOutput(const wxString& separator);
+
 
 	/**
 	 * Logs the specified line of text, prefixed with the name of the DebugType.
@@ -280,6 +282,7 @@ public:
 	CLogger() {
 		applog = nullptr;
 		m_StdoutLog = false;
+		m_persistentSeparator = wxT(";");
 		m_count = 0;
 	}
 
@@ -287,6 +290,7 @@ private:
 	class wxFFileOutputStream* applog;	// the logfile
 	wxString m_LogfileName;
 	wxString m_ApplogBuf;
+	wxString m_persistentSeparator;
 	bool m_StdoutLog;
 	int  m_count;			// output line counter
 	wxMutex m_lineLock;
@@ -299,7 +303,7 @@ private:
 	/**
 	 * Really output a single line
 	 */
-	void DoLine(const wxString & line, bool toStdout, bool toGUI);
+	void DoLine(const wxString & persistentLine, const wxString & guiLine, bool toStdout, bool toGUI);
 
 	/**
 	 * Really output several lines

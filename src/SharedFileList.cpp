@@ -57,6 +57,8 @@
 
 typedef std::deque<CKnownFile*> KnownFileArray;
 
+static bool IsValidSharedPath(const CPath& path);
+
 ///////////////////////////////////////////////////////////////////////////////
 // CPublishKeyword
 

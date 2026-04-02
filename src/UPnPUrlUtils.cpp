@@ -26,6 +26,17 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
+namespace {
+
+ResolveHostnameForTestFunc g_resolveHostnameForTest = nullptr;
+
+}
+
+void SetResolveHostnameForTest(ResolveHostnameForTestFunc resolver)
+{
+	g_resolveHostnameForTest = resolver;
+}
+
 bool ParseUrl(const std::string& url, std::string& scheme, std::string& host, uint16_t& port)
 {
 	const std::string::size_type schemeEnd = url.find("://");
@@ -69,6 +80,14 @@ bool HostToIPv4(const std::string& host, uint32_t& outAddr)
 	if (host.empty()) {
 		return false;
 	}
+	if (g_resolveHostnameForTest) {
+		uint32_t resolved = 0;
+		if (!g_resolveHostnameForTest(host, resolved)) {
+			return false;
+		}
+		outAddr = resolved;
+		return true;
+	}
 	std::string lowerHost(host);
 	std::transform(lowerHost.begin(), lowerHost.end(), lowerHost.begin(), ::tolower);
 	if (lowerHost == "localhost") {
@@ -80,7 +99,26 @@ bool HostToIPv4(const std::string& host, uint32_t& outAddr)
 		outAddr = ntohl(addr.s_addr);
 		return true;
 	}
-	return false;
+
+	addrinfo hints {};
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = AI_ADDRCONFIG;
+
+	addrinfo* results = nullptr;
+	const int ret = getaddrinfo(host.c_str(), nullptr, &hints, &results);
+	if (ret != 0 || results == nullptr) {
+		if (results != nullptr) {
+			freeaddrinfo(results);
+		}
+		return false;
+	}
+
+	const sockaddr_in* v4 = reinterpret_cast<sockaddr_in*>(results->ai_addr);
+	outAddr = ntohl(v4->sin_addr.s_addr);
+	freeaddrinfo(results);
+	return true;
 }
 
 bool IsPrivateIPv4(uint32_t ip)
@@ -101,19 +139,41 @@ bool IsLocalIPv4Host(const std::string& host)
 	return IsPrivateIPv4(addr);
 }
 
-bool IsSafeLanUrl(const std::string& url)
+bool IsSafeLanUrl(const std::string& url, std::string* rejectionReason)
 {
 	std::string scheme;
 	std::string host;
 	uint16_t port = 0;
 	if (!ParseUrl(url, scheme, host, port)) {
+		if (rejectionReason) {
+			*rejectionReason = std::string("URL inválida o incompleta: ") + url;
+		}
 		return false;
 	}
 	std::transform(scheme.begin(), scheme.end(), scheme.begin(), ::tolower);
 	if (scheme != "http" && scheme != "https") {
+		if (rejectionReason) {
+			*rejectionReason = std::string("Scheme no permitido (solo http/https): ") + scheme;
+		}
 		return false;
 	}
-	return IsLocalIPv4Host(host);
+
+	uint32_t addr = 0;
+	if (!HostToIPv4(host, addr)) {
+		if (rejectionReason) {
+			*rejectionReason = std::string("Hostname no resoluble o no IPv4: ") + host;
+		}
+		return false;
+	}
+
+	if (!IsPrivateIPv4(addr)) {
+		if (rejectionReason) {
+			*rejectionReason = std::string("Hostname resuelve fuera de la LAN: ") + host;
+		}
+		return false;
+	}
+
+	return true;
 }
 
 bool AssignLanUrlOrClear(const char* label, const std::string& resolvedUrl, std::string& destination, std::string* outMessage)
@@ -122,10 +182,15 @@ bool AssignLanUrlOrClear(const char* label, const std::string& resolvedUrl, std:
 		destination.clear();
 		return false;
 	}
-	if (!IsSafeLanUrl(resolvedUrl)) {
+	std::string rejectionReason;
+	if (!IsSafeLanUrl(resolvedUrl, &rejectionReason)) {
 		destination.clear();
 		if (outMessage) {
-			*outMessage = std::string("Rejecting ") + label + " outside LAN: " + resolvedUrl;
+			if (rejectionReason.empty()) {
+				*outMessage = std::string("Rejecting ") + label + " fuera de LAN";
+			} else {
+				*outMessage = std::string("Rejecting ") + label + ": " + rejectionReason;
+			}
 		}
 		return false;
 	}

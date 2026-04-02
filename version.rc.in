@@ -38,10 +38,11 @@ BEGIN
 			VALUE	"FileVersion",		VER_PRODUCTVERSION_STR
 			VALUE	"InternalName",		VER_INTERNALNAME_STR
 			VALUE	"OriginalFilename",	VER_ORIGINALFILENAME_STR
-			VALUE	"ProductName",		"aMule"
+			VALUE	"ProductName",		"wMule"
 			VALUE	"ProductVersion",	VER_PRODUCTVERSION_STR
-			VALUE	"LegalCopyright",	"aMule Team ( admin@amule.org )"
+			VALUE	"LegalCopyright",	"Copyright (c) 2026 Tomas Platero"
 		END
+	END
 	END
 	BLOCK "VarFileInfo"
 	BEGIN

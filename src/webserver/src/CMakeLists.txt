@@ -44,7 +44,6 @@ target_compile_definitions (amuleweb
 target_include_directories (amuleweb
 	PRIVATE ${CMAKE_BINARY_DIR}
 	PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
-	PRIVATE ${LIBUPNP_INCLUDE_DIRS}
 	PRIVATE ${SRC_DIR}
 )
 
@@ -57,7 +56,7 @@ target_link_libraries (amuleweb
 
 if (ENABLE_UPNP)
 	target_link_libraries (amuleweb
-		PRIVATE UPNP::Shared
+		PRIVATE wmule_upnp_sdk
 	)
 endif()
 

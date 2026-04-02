@@ -80,28 +80,30 @@ if (wx_NEEDED)
 endif ()
 
 if (ENABLE_UPNP)
-	function(_wmule_filter_upnp_import target fallback_include)
-		if (TARGET ${target})
-			get_target_property(_wmule_iface_dirs ${target} INTERFACE_INCLUDE_DIRECTORIES)
-			if (_wmule_iface_dirs AND NOT _wmule_iface_dirs STREQUAL "_wmule_iface_dirs-NOTFOUND")
-				list(FILTER _wmule_iface_dirs EXCLUDE REGEX "[\\/](COMPONENT|UPNP_Development)$")
-				if (NOT _wmule_iface_dirs)
-					list(APPEND _wmule_iface_dirs "${fallback_include}")
-				endif()
-				set_property(TARGET ${target} PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${_wmule_iface_dirs}")
-			endif()
-		endif()
-	endfunction()
+	find_package(miniupnpc CONFIG REQUIRED)
 
-	set(UPNP_DIR "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/libupnp")
-	set(IXML_DIR "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/libupnp")
-	set(PThreads4W_DIR "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/pthreads4w")
-	find_package(UPNP CONFIG REQUIRED)
-	find_package(IXML CONFIG REQUIRED)
-	find_package(PThreads4W CONFIG REQUIRED)
-	set(_wmule_upnp_include "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include/upnp")
-	_wmule_filter_upnp_import(UPNP::Shared "${_wmule_upnp_include}")
-	_wmule_filter_upnp_import(IXML::Shared "${_wmule_upnp_include}")
+	set(_wmule_miniupnp_target "")
+	if (TARGET miniupnpc::miniupnpc)
+		set(_wmule_miniupnp_target miniupnpc::miniupnpc)
+	elseif (TARGET MINIUPNPC::miniupnpc)
+		set(_wmule_miniupnp_target MINIUPNPC::miniupnpc)
+	elseif (TARGET MINIUPNPC::miniupnpc-static)
+		set(_wmule_miniupnp_target MINIUPNPC::miniupnpc-static)
+	endif()
+
+	if (_wmule_miniupnp_target STREQUAL "")
+		message(FATAL_ERROR "ENABLE_UPNP=ON requiere miniupnpc exportando miniupnpc::miniupnpc (o equivalente). Instala miniupnpc vía vcpkg o desactiva ENABLE_UPNP.")
+	endif()
+
+	add_library(wmule_upnp_sdk INTERFACE)
+	target_link_libraries(wmule_upnp_sdk
+		INTERFACE
+			${_wmule_miniupnp_target}
+	)
+	target_include_directories(wmule_upnp_sdk INTERFACE
+		$<TARGET_PROPERTY:${_wmule_miniupnp_target},INTERFACE_INCLUDE_DIRECTORIES>
+	)
+	set(WMULE_MINIUPNP_TARGET ${_wmule_miniupnp_target})
 endif ()
 
 # Find cryptopp (required for EC protocol)

@@ -29,20 +29,42 @@
 #include <ec/cpp/ECSpecialTags.h>	// Needed for special EC tag creator classes
 #include <common/Path.h>
 
+#include "ECPreferencesValidation.h"
+
 #include "Logger.h"
 #include "Preferences.h"
 #include "amule.h"
 
 namespace
 {
-bool NormalizeRemoteDirectory(const wxString& rawPath, wxString& normalized, const wxString& contextLabel)
+CInternalPathContext BuildECInternalPathContext(bool createIfMissing)
 {
-	if (!NormalizeSharedPath(rawPath, normalized)) {
-		AddLogLineCS(wxString::Format(_("External connection rejected invalid path '%s' for %s; keeping previous value."),
-			rawPath, contextLabel));
-		return false;
+	CInternalPathContext context = {
+		thePrefs::GetConfigDir(),
+		thePrefs::GetTempDir().GetRaw(),
+		thePrefs::GetIncomingDir().GetRaw(),
+		createIfMissing,
+		thePrefs::GetAllowUnsafeInternalDirs(),
+		thePrefs::AllowUnsafeInternalDirsEffective()
+	};
+
+	return context;
+}
+
+wxString DescribeECPathKind(EInternalPathKind kind)
+{
+	switch (kind) {
+		case EInternalPathKind::IncomingDir:
+			return _( "incoming directory" );
+		case EInternalPathKind::TempDir:
+			return _( "temp directory" );
+		case EInternalPathKind::ConfigDir:
+			return _( "config directory" );
+		case EInternalPathKind::OSDir:
+			return _( "online signature directory" );
 	}
-	return true;
+
+	return _( "directory" );
 }
 }
 
@@ -396,10 +418,11 @@ static void ApplyBoolean(bool use_tag, const CECTag *thisTab, void (applyFunc)(b
  *  -> On remote gui they are loaded on startup, and then changed on-command
  *  -> Webserver doesn't supposed to change it.
  */
-void CEC_Prefs_Packet::Apply() const
+bool CEC_Prefs_Packet::Apply(wxArrayString& errors) const
 {
 	const CECTag *thisTab = nullptr;
 	const CECTag *oneTag = nullptr;
+	CInternalPathContext dirContext = BuildECInternalPathContext(true);
 
 	if ((thisTab = GetTagByName(EC_TAG_PREFS_GENERAL)) != nullptr) {
 		if ((oneTag = thisTab->GetTagByName(EC_TAG_USER_NICK)) != nullptr) {
@@ -534,15 +557,41 @@ void CEC_Prefs_Packet::Apply() const
 
 	if ((thisTab = GetTagByName(EC_TAG_PREFS_DIRECTORIES)) != nullptr) {
 		if ((oneTag = thisTab->GetTagByName(EC_TAG_DIRECTORIES_INCOMING)) != nullptr) {
-			wxString normalized;
-			if (NormalizeRemoteDirectory(oneTag->GetStringData(), normalized, _( "incoming directory" ))) {
-				thePrefs::SetIncomingDir(CPath(normalized));
+			ECDirectoryUpdateOutcome incomingOutcome = ApplyECPathPreference(EInternalPathKind::IncomingDir,
+				oneTag->GetStringData(), thePrefs::GetIncomingDir(), dirContext);
+			if (incomingOutcome.m_ok) {
+				thePrefs::SetIncomingDir(CPath(incomingOutcome.m_effectivePath));
+				if (incomingOutcome.m_usedUnsafeBypass) {
+					AddLogLineCS(CFormat(wxT("External connection accepted %s outside configuration base (validated)."))
+						% DescribeECPathKind(EInternalPathKind::IncomingDir));
+				}
+			} else {
+				errors.Add(CFormat(_("Rejected %s from EC: %s"))
+					% DescribeECPathKind(EInternalPathKind::IncomingDir)
+					% incomingOutcome.m_error);
+				AddLogLineCS(CFormat(_("External connection rejected %s '%s' (%s); keeping previous value."))
+					% DescribeECPathKind(EInternalPathKind::IncomingDir)
+					% oneTag->GetStringData()
+					% incomingOutcome.m_error);
 			}
 		}
 		if ((oneTag = thisTab->GetTagByName(EC_TAG_DIRECTORIES_TEMP)) != nullptr) {
-			wxString normalized;
-			if (NormalizeRemoteDirectory(oneTag->GetStringData(), normalized, _( "temp directory" ))) {
-				thePrefs::SetTempDir(CPath(normalized));
+			ECDirectoryUpdateOutcome tempOutcome = ApplyECPathPreference(EInternalPathKind::TempDir,
+				oneTag->GetStringData(), thePrefs::GetTempDir(), dirContext);
+			if (tempOutcome.m_ok) {
+				thePrefs::SetTempDir(CPath(tempOutcome.m_effectivePath));
+				if (tempOutcome.m_usedUnsafeBypass) {
+					AddLogLineCS(CFormat(wxT("External connection accepted %s outside configuration base (validated)."))
+						% DescribeECPathKind(EInternalPathKind::TempDir));
+				}
+			} else {
+				errors.Add(CFormat(_("Rejected %s from EC: %s"))
+					% DescribeECPathKind(EInternalPathKind::TempDir)
+					% tempOutcome.m_error);
+				AddLogLineCS(CFormat(_("External connection rejected %s '%s' (%s); keeping previous value."))
+					% DescribeECPathKind(EInternalPathKind::TempDir)
+					% oneTag->GetStringData()
+					% tempOutcome.m_error);
 			}
 		}
 			if ((oneTag = thisTab->GetTagByName(EC_TAG_DIRECTORIES_SHARED)) != nullptr) {
@@ -550,8 +599,11 @@ void CEC_Prefs_Packet::Apply() const
 				normalizedEntries.reserve(oneTag->GetTagCount());
 				for (CECTag::const_iterator it = oneTag->begin(); it != oneTag->end(); ++it) {
 					wxString normalized;
-					if (NormalizeRemoteDirectory(it->GetStringData(), normalized, _( "shared directory entry" ))) {
+					if (NormalizeSharedPath(it->GetStringData(), normalized)) {
 						normalizedEntries.push_back(CPath(normalized));
+					} else {
+						AddLogLineCS(wxString::Format(_("External connection rejected invalid path '%s' for %s; keeping previous value."),
+							it->GetStringData(), _( "shared directory entry" )));
 					}
 				}
 				theApp->glob_prefs->shareddir_list = CPreferences::SanitizeSharedDirectories(normalizedEntries);
@@ -607,5 +659,7 @@ void CEC_Prefs_Packet::Apply() const
 	}
 
 	theApp->glob_prefs->Save();
+
+	return errors.IsEmpty();
 }
 // File_checked_for_headers
