@@ -222,5 +222,6 @@ Este anexo recoge únicamente las fases cerradas del plan vigente. El documento 
 - El barrido de `memcpy`/`memmove`/`Read` quedó cubierto y se corrigió la única llamada con `sizeof(int)` que faltaba.
 - Build Debug + ctest + smoke manual (`wmule.exe`, `wmulecmd.exe`) completados en `K:\wMule\build-ninja` (04/04/2026).
 - [Deuda estética] Ajustar la pantalla de búsqueda con parámetros adicionales: el cuadro de “Extensión” queda demasiado alto y necesita corrección visual.
+- 2026-04-04: Se cerró la incidencia de warnings MSVC (C4242/C4099/C4996) endureciendo conversiones en core/clientes y congelando los lexers de flex por defecto (`WMULE_USE_FLEX=OFF`). El build Debug vuelve a quedar limpio salvo los avisos externos (Boost.Asio).
 
 ---
