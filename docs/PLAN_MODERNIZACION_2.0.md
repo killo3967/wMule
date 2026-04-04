@@ -276,8 +276,7 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 - Estado actual: `[ ] Pendiente`
 
 ### Notas / incidencias
-- 04/04/2026 — Se eliminó el lote de conversiones inseguras (`uint32→uint8/uint16`) en `BaseClient`, `ClientList`, `ClientTCPSocket`, `DownloadClient`, `PartFile`, `Preferences`, `Server`, `ServerSocket`, `UploadClient` y helpers asociados. Los contadores clave (`GetValidSourcesCount`, `SetRemoteQueueRank`, `m_nSumForAvgUpDataRate`, puertos, etc.) ahora operan con tipos consistentes y clamps explícitos; build/tests completaron sin nuevos warnings propios.
-- 04/04/2026 — Se congelaron los lexers generados por flex (`Scanner.cpp`, `IPFilterScanner.cpp`) y se introdujo la opción `WMULE_USE_FLEX` para regenerarlos solo bajo demanda. Esto evita que MSVC vuelva a introducir warnings por `register`/`strdup` cuando se construye el proyecto por defecto.
+- Ninguna.
 
 ---
 
