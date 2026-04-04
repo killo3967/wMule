@@ -1,7 +1,7 @@
 # AGENTS.md - wMule Project Guidelines
 
 **Project:** wMule (Windows Mule)  
-**Version:** 1.0.2 (fork of aMule 2.4.0)  
+**Version:** 1.0.3 (fork of aMule 2.4.0)  
 **Platform:** Windows 11 x64 only  
 **License:** GPL v2+  
 **Build System:** CMake + vcpkg + MSVC 2022
@@ -423,7 +423,7 @@ Note: `compile_commands.json` vive en `build-ninja/`; apunta clangd a ese direct
 From `src/include/common/ClientVersion.h`:
 
 ```cpp
-#define VERSION      1.0.2
-#define MOD_VERSION "1.0.2"
-#define MOD_VERSION_LONG "wMule 1.0.2"
+#define VERSION      1.0.3
+#define MOD_VERSION "1.0.3"
+#define MOD_VERSION_LONG "wMule 1.0.3"
 ```

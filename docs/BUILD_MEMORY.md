@@ -1,9 +1,9 @@
 # wMule Build Memory - AI Agent Documentation
 
 **Project:** wMule (Windows Mule)  
-**Version:** 1.0.2  
+**Version:** 1.0.3  
 **Base:** aMule 2.4.0  
-**Date:** 2026-04-04  
+**Date:** 2026-04-05  
 **Author:** Tomas Platero  
 
 ---
@@ -62,6 +62,26 @@ The variable `${amule_BINARY_DIR}` was used but never defined because the projec
 
 ### Problem: Executable Names
 **Solution:** Changed `add_executable (amule` → `add_executable (wmule` and similar for amulecmd
+
+---
+
+## Release 1.0.3 – 2026-04-05
+
+### Objetivo
+Reducir la deuda técnica inicial de la Fase 4 endureciendo conversiones de tipos, apagando warnings MSVC y dejando documentada la opción de regenerar lexers solo cuando sea necesario.
+
+### Cambios principales
+- Contadores e IDs en `BaseClient`, `ClientList`, `PartFile`, `UploadClient`, `ServerSocket`, etc. migrados a tipos consistentes (`uint32`/`uint64`), con clamps explícitos para categorías, colas y puertos a fin de eliminar warning C4242 y evitar truncamientos en x64.
+- `CMakeLists.txt` ahora genera `ClientVersion.h` desde plantilla (`ClientVersion.h.in`) y define `_CRT_SECURE_NO_WARNINGS`, por lo que los headers de wxWidgets no disparan C4996.
+- Los lexers de flex (`Scanner.cpp`, `IPFilterScanner.cpp`) se distribuyen pre-generados; se añadió la opción `WMULE_USE_FLEX` para regenerarlos bajo demanda y se limpió el código generado de `register`/`strdup` inseguros.
+- Documentación (`PLAN_MODERNIZACION_2.0.md`, `PLAN_MODERNIZACION_COMPLETADO.md`, `AGENTS.md`, `CHANGELOG.md`) actualizada con el nuevo release y la deuda ya archivada.
+
+### Validaciones
+- `cmake --build . --config Debug`
+- `ctest --output-on-failure -C Debug`
+
+### Resultado
+- **wMule 1.0.3** se publica como baseline con build limpia (solo warnings heredados de Boost.Asio), preparando el terreno para el resto de la Fase 4.
 
 ---
 
@@ -231,9 +251,9 @@ Los binarios siempre buscan catálogos debajo del ejecutable (`<exe>/locale/<lan
 
 From `src/include/common/ClientVersion.h`:
 ```cpp
-#define VERSION      1.0.2
-#define MOD_VERSION "1.0.2"
-#define MOD_VERSION_LONG "wMule 1.0.2"
+#define VERSION      1.0.3
+#define MOD_VERSION "1.0.3"
+#define MOD_VERSION_LONG "wMule 1.0.3"
 ```
 
 ---

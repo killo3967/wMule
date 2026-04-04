@@ -18,6 +18,20 @@ Reemplazar headers GPL largos (~24 líneas) por versión simplificada (~6 línea
 
 ---
 
+## [1.0.3] - 2026-04-05
+
+### Deuda Fase 4 – Conversions & Build Cleanliness
+- Contadores y puertos de `BaseClient`, `CClientList`, `PartFile`, `UploadClient`, `ServerSocket` y preferencias migrados a tipos consistentes (`uint32`, `uint64`, `uint16`) con clamps explícitos, eliminando los últimos truncamientos reportados por MSVC (C4242/C4302).
+- `GuiEvents`, `KnownFileList` y los helpers de hash actualizados para tratar correctamente `wxChar`, `uint64 transferred` y codificación en `MD4Hash`.
+- `config.h.cm` condiciona las macros `PACKAGE*` y `CMakeLists.txt` define `_CRT_SECURE_NO_WARNINGS`, apagando el ruido C4996 heredado de wxWidgets.
+- Los lexers de flex (`Scanner.cpp`, `IPFilterScanner.cpp`) quedan congelados por defecto y se añade la opción `WMULE_USE_FLEX` para regenerarlos bajo demanda; el código generado deja de usar `register` y `strdup` inseguros.
+
+### Validaciones
+- `cmake --build . --config Debug`
+- `ctest --output-on-failure -C Debug`
+
+---
+
 ## [1.0.2] - 2026-04-04
 
 ### Robustez x64 y Memoria (Fase 3)
