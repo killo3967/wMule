@@ -28,6 +28,7 @@
 #define STRING_FUNCTIONS_H
 
 #include "../../Types.h"		// Needed for uint16 and uint32
+#include <cstring>
 
 
 // UTF8 types: No UTF8, BOM prefix, or Raw UTF8
@@ -113,10 +114,12 @@ inline wxString MakeFoldername(wxString path) {
 // Duplicates a string
 inline char* nstrdup(const char* src)
 {
-	size_t len = (src ? strlen(src) : 0) + 1;
-	char *res = new char[len];
-	if ( src ) strcpy(res, src);
-	res[len-1] = 0;
+	const size_t len = src ? std::strlen(src) : 0;
+	char* res = new char[len + 1];
+	if (src && len > 0) {
+		std::memcpy(res, src, len);
+	}
+	res[len] = '\0';
 	return res;
 }
 

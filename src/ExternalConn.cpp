@@ -1892,7 +1892,7 @@ ECStatusMsgSource::ECStatusMsgSource()
 {
 	m_last_ed2k_status_sent = 0xffffffff;
 	m_last_kad_status_sent = 0xffffffff;
-	m_server = (void *)0xffffffff;
+	m_server = nullptr;
 }
 
 uint32 ECStatusMsgSource::GetEd2kStatus()
@@ -1920,13 +1920,14 @@ uint32 ECStatusMsgSource::GetKadStatus()
 
 CECPacket *ECStatusMsgSource::GetNextPacket()
 {
+	const CServer* currentServer = theApp->serverconnect->GetCurrentServer();
 	if ( (m_last_ed2k_status_sent != GetEd2kStatus()) ||
 		(m_last_kad_status_sent != GetKadStatus()) ||
-		(m_server != theApp->serverconnect->GetCurrentServer()) ) {
+		(m_server != currentServer) ) {
 
 		m_last_ed2k_status_sent = GetEd2kStatus();
 		m_last_kad_status_sent = GetKadStatus();
-		m_server = theApp->serverconnect->GetCurrentServer();
+		m_server = currentServer;
 
 		CECPacket *response = new CECPacket(EC_OP_STATS);
 		response->AddTag(CEC_ConnState_Tag(EC_DETAIL_UPDATE));

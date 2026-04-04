@@ -800,6 +800,7 @@ public:
 			AddDebugLogLineN(logAsio, CFormat(wxT("CAsioSocketServerImpl bind to %s %d")) % adr.IPAddress() % adr.Service());
 		} catch (const system_error& err) {
 			AddDebugLogLineC(logAsio, CFormat(wxT("CAsioSocketServerImpl bind to %s %d failed - %s")) % adr.IPAddress() % adr.Service() % err.code().message());
+			wxUnusedVar(err);
 		}
 	}
 
@@ -1150,6 +1151,7 @@ private:
 			StartBackgroundRead();
 		} catch (const system_error& err) {
 			AddLogLineC(CFormat(wxT("Error creating UDP socket %s %d : %s")) % m_address.IPAddress() % m_address.Service() % err.code().message());
+			wxUnusedVar(err);
 			m_socket = nullptr;
 			m_OK = false;
 		}

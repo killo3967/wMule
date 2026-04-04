@@ -1781,7 +1781,7 @@ void CUpDownClient::ReGetClientSoft()
 	wxString clientModString;
 	if (iHashType == SO_EMULE) {
 
-		m_clientSoft = m_byCompatibleClient;
+		m_clientSoft = static_cast<uint8>(m_byCompatibleClient & 0xFFu);
 		m_clientSoftString = GetSoftName(m_clientSoft);
 		// Special issues:
 		if(!GetClientModString().IsEmpty() && (m_clientSoft != SO_EMULE)) {

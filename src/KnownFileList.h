@@ -51,7 +51,7 @@ public:
 	void	ReleaseIndex();
 
 	uint16 requested;
-	uint32 transferred;
+	uint64 transferred;
 	uint16 accepted;
 
 private:

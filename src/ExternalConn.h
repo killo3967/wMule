@@ -81,6 +81,7 @@ class CObjTagMap {
 class CECServerSocket;
 class ECNotifier;
 class ExternalConn;
+class CServer;
 
 class CExternalConnListener : public CLibSocketServer
 {
@@ -176,7 +177,7 @@ class ECClientMsgSource : public ECUpdateMsgSource {
 class ECStatusMsgSource : public ECUpdateMsgSource {
 		uint32 m_last_ed2k_status_sent;
 		uint32 m_last_kad_status_sent;
-		void *m_server;
+		const CServer* m_server;
 
 		uint32 GetEd2kStatus();
 		uint32 GetKadStatus();

@@ -34,6 +34,15 @@
 #include <wx/filename.h>
 #include <algorithm>	// Needed for std::min
 
+namespace {
+	constexpr int kNormalizeAllNoEnvVars =
+		wxPATH_NORM_DOTS |
+		wxPATH_NORM_TILDE |
+		wxPATH_NORM_ABSOLUTE |
+		wxPATH_NORM_LONG |
+		wxPATH_NORM_SHORTCUT;
+}
+
 
 // Windows has case-insensitive paths, so we use a
 // case-insensitive cmp for that platform. TODO:
@@ -198,7 +207,7 @@ static bool IsSameAs(const wxString& a, const wxString& b)
 	// We normalize everything, except env. variables, which
 	// can cause problems when the string is not encodable
 	// using wxConvLibc which wxWidgets uses for the purpose.
-	const int flags = (wxPATH_NORM_ALL | wxPATH_NORM_CASE) & ~wxPATH_NORM_ENV_VARS;
+	const int flags = kNormalizeAllNoEnvVars | wxPATH_NORM_CASE;
 
 	// Let wxFileName handle the tricky stuff involved in actually
 	// comparing two paths ... Currently, a path ending with a path-
@@ -870,7 +879,7 @@ bool NormalizeSharedPath(const wxString& rawPath, wxString& normalizedPath, cons
 		return false;
 	}
 
-	const int flags = (wxPATH_NORM_ALL | wxPATH_NORM_DOTS | wxPATH_NORM_TILDE | wxPATH_NORM_ABSOLUTE) & ~wxPATH_NORM_ENV_VARS;
+	const int flags = kNormalizeAllNoEnvVars;
 	wxFileName fn(rawPath);
 	if (fn.IsRelative() && baseDir.IsEmpty()) {
 		return false;

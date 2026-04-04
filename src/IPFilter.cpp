@@ -49,12 +49,8 @@
 ////////////////////////////////////////////////////////////
 // CIPFilterEvent
 
-BEGIN_DECLARE_EVENT_TYPES()
-	DECLARE_EVENT_TYPE(MULE_EVT_IPFILTER_LOADED, -1)
-END_DECLARE_EVENT_TYPES()
-
-DEFINE_EVENT_TYPE(MULE_EVT_IPFILTER_LOADED)
-
+class CIPFilterEvent;
+wxDECLARE_EVENT(MULE_EVT_IPFILTER_LOADED, CIPFilterEvent);
 
 class CIPFilterEvent : public wxEvent
 {
@@ -78,6 +74,8 @@ public:
 	CIPFilter::RangeLengths m_rangeLengths;
 	CIPFilter::RangeNames m_rangeNames;
 };
+
+wxDEFINE_EVENT(MULE_EVT_IPFILTER_LOADED, CIPFilterEvent);
 
 
 typedef void (wxEvtHandler::*MuleIPFilterEventFunction)(CIPFilterEvent&);

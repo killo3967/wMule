@@ -70,7 +70,7 @@ public:
 	uint16  GetPort() const			{return realport ? realport : port;}
 	// the connection port
 	uint16  GetConnPort() const		{return port;}
-	void    SetPort(uint32 val)		{realport = val;}
+	void    SetPort(uint16 val)		{realport = val;}
 	bool	AddTagFromFile(CFileDataIO* servermet);
 	void	SetListName(const wxString& newname);
 	void	SetDescription(const wxString& newdescription);

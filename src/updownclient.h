@@ -336,7 +336,7 @@ public:
 	uint16		GetOldRemoteQueueRank() const	{ return m_nOldRemoteQueueRank; }
 	void		SetRemoteQueueFull(bool flag)	{ m_bRemoteQueueFull = flag; }
 	bool		IsRemoteQueueFull() const	{ return m_bRemoteQueueFull; }
-	void		SetRemoteQueueRank(uint16 nr);
+	void		SetRemoteQueueRank(uint32 nr);
 	bool		AskForDownload();
 	void		SendStartupLoadReq();
 	void		SendFileRequest();
@@ -600,7 +600,7 @@ private:
 	// Upload data rate computation
 	//
 	uint32		m_nUpDatarate;
-	uint32		m_nSumForAvgUpDataRate;
+	uint64		m_nSumForAvgUpDataRate;
 	std::list<TransferredData> m_AvarageUDR_list;
 
 

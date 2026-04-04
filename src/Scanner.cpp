@@ -22,6 +22,10 @@
 #include <errno.h>
 #include <stdlib.h>
 
+#if defined(_MSC_VER) && !defined(strdup)
+#define strdup _strdup
+#endif
+
 /* end standard C headers. */
 
 /* flex integer type definitions */

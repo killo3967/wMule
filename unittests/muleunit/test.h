@@ -38,7 +38,7 @@ namespace muleunit
 {
 
 class TestCase;
-class BTList;
+struct BTList;
 
 
 /** Returns the size of a static array. */

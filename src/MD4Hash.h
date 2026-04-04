@@ -35,6 +35,7 @@
 #endif
 
 #include <string>
+#include <cctype>
 
 
 const size_t MD4HASH_LENGTH = 16;
@@ -163,12 +164,14 @@ public:
 		}
 
 		for ( size_t i = 0; i < MD4HASH_LENGTH * 2; i++ ) {
-			unsigned char word = toupper(hash[i]);
+			const unsigned char ch = static_cast<unsigned char>(hash[i]);
+			const int upper = std::toupper(ch);
+			uint8 word;
 
-			if ((word >= '0') && (word <= '9')) {
-				word -= '0';
-			} else if ((word >= 'A') && (word <= 'F')) {
-				word -= 'A' - 10;
+			if ((upper >= '0') && (upper <= '9')) {
+				word = static_cast<uint8>(upper - '0');
+			} else if ((upper >= 'A') && (upper <= 'F')) {
+				word = static_cast<uint8>(upper - ('A' - 10));
 			} else {
 				// Invalid chars
 				return false;

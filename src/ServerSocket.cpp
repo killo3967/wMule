@@ -329,14 +329,14 @@ bool CServerSocket::ProcessPacket(const uint8_t* packet, uint32 size, int8 opcod
 				wxASSERT(cur_server);
 				CServer* pServer = nullptr;
 				if (cur_server) {
-					uint32 ConnPort = 0;
-					uint32 rport = cur_server->GetConnPort();
+				uint16 ConnPort = 0;
+				uint16 rport = cur_server->GetConnPort();
 					pServer = theApp->serverlist->GetServerByAddress(cur_server->GetAddress(), rport);
 					if (size >= 4+4 /* uint32 (ID) + uint32 (TCP flags)*/) {
 						cur_server->SetTCPFlags(data.ReadUInt32());
 						if (size >= 4+4+4 /* uint32 (ID) + uint32 (TCP flags) + uint32 (aux port) */) {
 							// aux port login : we should use the 'standard' port of this server to advertise to other clients
-							ConnPort = data.ReadUInt32();
+							ConnPort = static_cast<uint16>(data.ReadUInt32());
 							cur_server->SetPort(ConnPort);
 							if (cur_server->GetAuxPortsList().IsEmpty()) {
 								cur_server->SetAuxPortsList(CFormat(wxT("%u")) % rport);
@@ -369,11 +369,12 @@ bool CServerSocket::ProcessPacket(const uint8_t* packet, uint32 size, int8 opcod
 					wxASSERT( dwServerReportedIP == new_id || ::IsLowID(new_id) );
 					uint32 dwObfuscationTCPPort = data.ReadUInt32();
 					if (dwObfuscationTCPPort != 0) {
+						const uint16 obfuscationPort = static_cast<uint16>(dwObfuscationTCPPort);
 						if (cur_server != nullptr) {
-							cur_server->SetObfuscationPortTCP(dwObfuscationTCPPort);
+							cur_server->SetObfuscationPortTCP(obfuscationPort);
 						}
 						if (pServer != nullptr) {
-							pServer->SetObfuscationPortTCP(dwObfuscationTCPPort);
+							pServer->SetObfuscationPortTCP(obfuscationPort);
 						}
 					}
 				}

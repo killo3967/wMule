@@ -155,7 +155,7 @@ public:
 #endif
 	uint16	GetTransferingSrcCount() const	{ return transferingsrc; }
 	uint16  GetNotCurrentSourcesCount()	const	{ return m_notCurrentSources; };
-	uint16	GetValidSourcesCount() const	{ return m_validSources; };
+	uint32	GetValidSourcesCount() const	{ return m_validSources; };
 
 	uint64	GetNeededSpace();
 

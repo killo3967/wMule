@@ -52,9 +52,13 @@ if (EXISTS "${CMAKE_SOURCE_DIR}/.git")
 	set (DEFAULT_BUILD_TYPE "Debug")
 endif()
 
-# MSVC: Disable warnings for third-party code
+# MSVC: Ajustes de warning
 if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
 	add_compile_options(/W3)
+	# wxWidgets sigue usando funciones CRT "inseguras" (strcpy, wcscpy...).
+	# Definimos _CRT_SECURE_NO_WARNINGS para silenciar los C4996 heredados
+	# sin tocar el código de terceros.
+	add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 endif()
 
 # Configuration types

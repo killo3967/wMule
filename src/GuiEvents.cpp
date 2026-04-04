@@ -63,6 +63,9 @@
 
 #include <common/MacrosProgramSpecific.h>
 
+#include <algorithm>
+#include <limits>
+
 DEFINE_LOCAL_EVENT_TYPE(MULE_EVT_NOTIFY)
 
 
@@ -683,7 +686,8 @@ namespace MuleNotify
 
 	void PartFile_SetCat(CPartFile* file, uint32 val)
 	{
-		file->SetCategory(val);
+		const uint32 clamped = std::min<uint32>(val, std::numeric_limits<uint8>::max());
+		file->SetCategory(static_cast<uint8>(clamped));
 	}
 
 

@@ -334,7 +334,7 @@ void CUpDownClient::CreatePackedPackets(const uint8_t* buffer, uint32 togo, Requ
 {
 	uLongf newsize = togo+300;
 	CScopedArray<uint8_t> output(newsize);
-	uint16 result = compress2(output.get(), &newsize, buffer, togo, 9);
+	int result = compress2(output.get(), &newsize, buffer, togo, 9);
 	if (result != Z_OK || togo <= newsize){
 		CreateStandardPackets(buffer, togo, currentblock);
 		return;
@@ -701,9 +701,10 @@ void CUpDownClient::SendHashsetPacket(const CMD4Hash& forfileid)
 
 	CMemFile data(1024);
 	data.WriteHash(file->GetFileHash());
-	uint16 parts = file->GetHashCount();
+	const size_t hashCount = file->GetHashCount();
+	const uint16 parts = static_cast<uint16>(std::min<size_t>(hashCount, std::numeric_limits<uint16>::max()));
 	data.WriteUInt16(parts);
-	for (int i = 0; i != parts; i++) {
+	for (uint16 i = 0; i < parts; ++i) {
 		data.WriteHash(file->GetPartHash(i));
 	}
 	CPacket* packet = new CPacket(data, OP_EDONKEYPROT, OP_HASHSETANSWER);

@@ -34,6 +34,8 @@
 
 #include <zlib.h>
 #include <cmath>		// Needed for std:exp
+#include <algorithm>
+#include <limits>
 
 #include "ClientCredits.h"	// Needed for CClientCredits
 #include "ClientUDPSocket.h"	// Needed for CClientUDPSocket
@@ -1203,17 +1205,19 @@ float CUpDownClient::CalculateKBpsDown()
 uint16 CUpDownClient::GetAvailablePartCount() const
 {
 	uint16 result = 0;
-	for (int i = 0;i != m_nPartCount;i++){
-		if (IsPartAvailable(i))
-			result++;
+	for (uint16 i = 0; i < m_nPartCount; ++i) {
+		if (IsPartAvailable(i)) {
+			++result;
+		}
 	}
 	return result;
 }
 
-void CUpDownClient::SetRemoteQueueRank(uint16 nr)
+void CUpDownClient::SetRemoteQueueRank(uint32 nr)
 {
+	const uint16 clamped = static_cast<uint16>(std::min<uint32>(nr, std::numeric_limits<uint16>::max()));
 	m_nOldRemoteQueueRank = m_nRemoteQueueRank;
-	m_nRemoteQueueRank = nr;
+	m_nRemoteQueueRank = clamped;
 	UpdateDisplayedInfo();
 }
 

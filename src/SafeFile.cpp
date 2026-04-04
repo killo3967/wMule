@@ -480,10 +480,12 @@ CTag *CFileDataIO::ReadTag(bool bOptACP) const
 		}
 	} catch(const CMuleException& e) {
 		AddLogLineN(e.what());
+		wxUnusedVar(e);
 		delete retVal;
 		throw;
 	} catch(const wxString& e) {
 		AddLogLineN(e);
+		wxUnusedVar(e);
 		throw;
 	}
 

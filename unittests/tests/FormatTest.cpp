@@ -110,9 +110,12 @@ TEST(Format, SetStringAndGetString)
 // is 1114111 (0x10ffff).
 TEST(Format, InjectwxChar)
 {
-	STANDARD_TEST(wxT("c"), wxT("c"), MIN(wxChar));
-	STANDARD_TEST(wxT("c"), wxT("c"), (wxChar)(std::min<wxChar>(MAX(wxChar), 0x10ffff) / 2));
-	STANDARD_TEST(wxT("c"), wxT("c"), (std::min<wxChar>(MAX(wxChar), 0x10ffff)));
+	const wxChar minValue = MIN(wxChar);
+	const wxChar maxValue = MAX(wxChar);
+	const wxChar midValue = static_cast<wxChar>(maxValue / 2);
+	STANDARD_TEST(wxT("c"), wxT("c"), minValue);
+	STANDARD_TEST(wxT("c"), wxT("c"), midValue);
+	STANDARD_TEST(wxT("c"), wxT("c"), maxValue);
 }
 
 

@@ -276,7 +276,14 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 - Estado actual: `[ ] Pendiente`
 
 ### Notas / incidencias
-- Ninguna.
+- El último build MSVC (04/04/2026) arrojó un bloque consistente de warnings que quedan como deuda de la fase:
+  - `wxPATH_NORM_ALL` está deprecado; nuestros helpers en `src/libs/common/Path.cpp` deben reemplazarlo por la combinación explícita de flags (`wxPATH_NORM_DOTS | wxPATH_NORM_TILDE | …`).
+  - `src/libs/common/StringFunctions.h` sigue usando `strcpy`/`strncpy` y dispara C4996 cada vez que se incluye. Hay que migrar a las variantes `_s`, encapsular en helpers o desactivar el warning localmente.
+  - `BTList` se declara como `struct` en `unittests/muleunit/test.h` pero los `.cpp` la vuelven a declarar como `class`, generando C4099 en todos los tests.
+  - `FormatTest.cpp` usa literales narrow para `wxChar` y provoca warnings de truncamiento (C4305/C4309); también hay variables `e/err` sin usar en `SafeFile.cpp` y `LibSocketAsio.cpp` (C4101) que conviene limpiar.
+  - `LibSocketAsio.cpp` depende de APIs de Boost.Asio marcadas como deprecadas (`deadline_timer`, `null_buffers`, `io_context::strand::wrap`). La migración a `basic_waitable_timer`/`bind_executor` requiere un subtask dedicado (probable alcance Fase 5 o 6).
+- 04/04/2026 — Se eliminó el lote de conversiones inseguras (`uint32→uint8/uint16`) en `BaseClient`, `ClientList`, `ClientTCPSocket`, `DownloadClient`, `PartFile`, `Preferences`, `Server`, `ServerSocket`, `UploadClient` y helpers asociados. Los contadores clave (`GetValidSourcesCount`, `SetRemoteQueueRank`, `m_nSumForAvgUpDataRate`, puertos, etc.) ahora operan con tipos consistentes y clamps explícitos; build/tests completaron sin nuevos warnings propios.
+- 04/04/2026 — Se congelaron los lexers generados por flex (`Scanner.cpp`, `IPFilterScanner.cpp`) y se introdujo la opción `WMULE_USE_FLEX` para regenerarlos solo bajo demanda. Esto evita que MSVC vuelva a introducir warnings por `register`/`strdup` cuando se construye el proyecto por defecto.
 
 ---
 
@@ -285,6 +292,7 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 **Objetivo**: Migrar gradualmente flujos a AsyncSocket con métricas y control.
 
 ### Tareas
+- [ ] Diseñar la migración de `LibSocketAsio` fuera de las APIs de Boost.Asio deprecadas (`deadline_timer`, `null_buffers`, `io_context::strand::wrap`), definiendo cómo y cuándo adoptar `basic_waitable_timer`/`bind_executor` dentro del alcance de esta fase.
 - [ ] Elegir flujo crítico acotado (p.ej. lecturas en `ClientTCPSocket`).
 - [ ] Integrar `AsyncSocket` con límites, timeouts y backpressure.
 - [ ] Añadir telemetría/métricas para latencia y throughput.

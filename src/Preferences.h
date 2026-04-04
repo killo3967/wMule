@@ -33,6 +33,9 @@
 #include <map>
 #include <vector>
 
+#include <algorithm>
+#include <limits>
+
 #include "Proxy.h"
 #include "OtherStructs.h"
 
@@ -381,7 +384,11 @@ public:
 	static bool		AddNewFilesPaused()		{ return s_addnewfilespaused; }
 	static void		SetAddNewFilesPaused(bool val)	{ s_addnewfilespaused = val; }
 
-	static void		SetMaxConsPerFive(int in)	{ s_MaxConperFive=in; }
+	static void		SetMaxConsPerFive(int in)
+	{
+		const int clamped = std::clamp(in, 1, static_cast<int>(std::numeric_limits<uint16>::max()));
+		s_MaxConperFive = static_cast<uint16>(clamped);
+	}
 
 	static uint16		GetMaxConperFive()		{ return s_MaxConperFive; }
 	static uint16		GetDefaultMaxConperFive();

@@ -242,6 +242,8 @@ target_include_directories (muleappcommon
 	endif()
 endif()
 
+option(WMULE_USE_FLEX "Regenerar lexers con flex en tiempo de build" OFF)
+
 if (NEED_LIB_MULEAPPCORE)
 	if (BISON_FOUND)
 		bison_target (Parser.cpp
@@ -255,7 +257,7 @@ if (NEED_LIB_MULEAPPCORE)
 		set (PARSER ${CMAKE_CURRENT_SOURCE_DIR}/Parser.cpp)
 	endif (BISON_FOUND)
 
-	if (FLEX_FOUND)
+	if (WMULE_USE_FLEX AND FLEX_FOUND)
 		if (FLEX_MATCH)
 			set (FLEX_FLAGS "--header-file=${CMAKE_CURRENT_BINARY_DIR}/Scanner.h")
 
@@ -279,6 +281,13 @@ if (NEED_LIB_MULEAPPCORE)
 		set (SCANNER ${CMAKE_CURRENT_BINARY_DIR}/Scanner.cpp)
 		set (IPFILTERSCANNER ${CMAKE_CURRENT_BINARY_DIR}/IPFilterScanner.cpp)
 	else()
+		if (WMULE_USE_FLEX)
+			message(WARNING "WMULE_USE_FLEX=ON requiere Flex, pero no se encontró. Usando los lexers pre-generados.")
+		else()
+			if (FLEX_FOUND)
+				message(STATUS "Flex detectado pero WMULE_USE_FLEX=OFF: se usarán los lexers pre-generados para evitar warnings legacy.")
+			endif()
+		endif()
 		set (SCANNER ${CMAKE_CURRENT_SOURCE_DIR}/Scanner.cpp)
 		set (IPFILTERSCANNER ${CMAKE_CURRENT_SOURCE_DIR}/IPFilterScanner.cpp)
 	endif()
