@@ -92,6 +92,21 @@ Este anexo recoge únicamente las fases cerradas del plan vigente. El documento 
 
 ## Fase 2 – Rutas, Archivos y Configuración Remota (trabajo completado)
 
+**Estado**: `[x] Completada (2026-04-02)`
+
+**Resumen**: Se cerró el hardening de paths internos/externos y ahora los directorios Incoming/Temp/OS pueden configurarse fuera del `ConfigDir` siempre que superen la normalización (`NormalizeAbsolutePath`, `NormalizeSharedPath`, `NormalizeInternalDir`). Las rutas provenientes de GUI, CLI, EC y tooling legacy pasan por los mismos guards y generan mensajes consistentes cuando se rechazan. La UX documenta las restricciones y explica por qué se produce cada fallback. EC conserva el almacenamiento PBKDF2 y los conectores Web/CLI migran secretos legacy; UPnP se mantiene operativo con `wmule_upnp_sdk` (miniupnpc) y feedback visible en la UI.
+
+**Validaciones obligatorias ejecutadas (02/04/2026)**
+- [x] `cmake --build . --config Debug` (matriz ENABLE_UPNP=ON con pruebas MuleUnit nuevas)
+- [x] `ctest --output-on-failure -C Debug` (incluyendo suites de traversal, EC y UPnP)
+- [x] Verificación básica de `wmule.exe`
+- [x] Verificación básica de `wmulecmd.exe`
+- [x] Documentación actualizada (`PLAN_MODERNIZACION_2.0.md`, `PLAN_MODERNIZACION_COMPLETADO.md`, `BUILD_MEMORY.md`)
+
+### Deuda técnica derivada
+
+- [ ] Auditoría de cobertura i18n en la GUI: tras habilitar `ENABLE_NLS` y regenerar catálogos, quedan textos visibles en inglés (toolbar principal, etiquetas de preferencias heredadas, mensajes legacy). Necesita un barrido de recursos `muuli_wdr.cpp` + `.po`/`.mo` para alinear `msgid`/`msgstr` y actualizar traducciones faltantes.
+
 ### 2.1 Path Traversal & FS Safety
 - [x] Crear helper común (p. ej. `NormalizeSharedPath`) que use `wxFileName::Normalize(wxPATH_NORM_ALL | wxPATH_NORM_DOTS | wxPATH_NORM_TILDE)` y verifique `IsRelative` antes de aceptar rutas externas.
 - [x] Aplicar el helper a los puntos de entrada ya saneados:
@@ -161,5 +176,51 @@ Este anexo recoge únicamente las fases cerradas del plan vigente. El documento 
 - 2026-03-30 (noche): `ENABLE_UPNP=ON` vuelve a ser default en `scripts/build-wmule.ps1`; miniupnpc recompila y linkea sin errores.
 - 2026-03-31 (validación real): `wmule.exe` abre automáticamente los puertos 11122/11125/11137 vía UPnP en router doméstico (HighID/Kad OK, `discovered=4 filtered=0`).
 - 2026-03-27: Hardening de rutas integrado y publicado como **wMule 1.0.1** (build + `PathTraversalTest` + smoke test completados antes de etiquetar).
+
+---
+
+## Fase 3 – Robustez x64 y Memoria
+
+**Objetivo**: Eliminar truncaciones y asegurar serialización correcta en x64.
+
+### Tareas
+#### 3.1 Casts y punteros
+- [x] Sustituir `int` usado como puntero por `intptr_t/uintptr_t`.
+- [x] Revisar `Packet.h`, `Tag.h`, `MuleThread.h`, `NetworkFunctions.cpp` y módulos relacionados.
+
+#### 3.2 Alineación y serialización
+- [x] Declarar estructuras con `#pragma pack` o `static_assert(sizeof)` según protocolo.
+- [x] Documentar layout binario y añadir tests que validen tamaños/alineación.
+
+#### 3.3 Buffers y tamaños
+- [x] Cambiar operaciones `sizeof(int)` por `sizeof(type)` apropiado.
+- [x] Añadir `static_assert` para garantizar tamaños esperados en x64.
+- [x] Revisar `memcpy`/`memmove`/`Read` con tamaños dinámicos.
+
+### Validación durante la fase
+- Compilación tras toques en tipos/estructuras.
+- Tests específicos de serialización y módulos afectados.
+
+### Validación obligatoria al cierre
+- [x] `cmake --build . --config Debug`
+- [x] `ctest --output-on-failure -C Debug`
+- [x] Verificación básica de `wmule.exe`
+- [x] Verificación básica de `wmulecmd.exe`
+- [x] Actualizar estado/documentación
+
+### Exit criteria
+- Cero truncaciones conocidas.
+- Build x64 limpia (sin warnings críticos).
+- Tests de serialización/regresión pasando.
+
+### Estado
+- Estado actual: `[x] Completada (2026-04-04)`
+
+### Notas / incidencias
+- `SearchList`, `amulecmd` y la API EC ya no dependen de `long` para IDs; los headers empaquetados (`Header_Struct`, `ServerMet_Struct`, etc.) tienen `static_assert` que rompen la build si cambia el layout.
+- Se documentaron los layouts binarios y se incorporaron `static_assert` + tests para validarlos en `docs/PLAN_MODERNIZACION_2.0.md`.
+- El barrido de `memcpy`/`memmove`/`Read` quedó cubierto y se corrigió la única llamada con `sizeof(int)` que faltaba.
+- Build Debug + ctest + smoke manual (`wmule.exe`, `wmulecmd.exe`) completados en `K:\wMule\build-ninja` (04/04/2026).
+- [Deuda estética] Ajustar la pantalla de búsqueda con parámetros adicionales: el cuadro de “Extensión” queda demasiado alto y necesita corrección visual.
 
 ---

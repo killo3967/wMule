@@ -1,3 +1,6 @@
+include_directories(${WMULE_GENERATED_COMMON_DIR})
+include_directories(${WMULE_GENERATED_DIR})
+
 add_executable (CTagTest
 	CTagTest.cpp
 	${CMAKE_SOURCE_DIR}/src/SafeFile.cpp

@@ -28,6 +28,7 @@
 
 #include "ExternalConnector.h"
 
+#include <cstdint>
 #include <map>
 
 
@@ -37,10 +38,10 @@ class CEC_SearchFile_Tag;
 class SearchFile {
 	public:
 		wxString sFileName;
-		unsigned long lFileSize;
+		uint64_t lFileSize;
 		CMD4Hash  nHash;
 		wxString  sHash;
-		long lSourceCount;
+		uint32_t lSourceCount;
 		bool bPresent;
 
 		SearchFile(const CEC_SearchFile_Tag *);

@@ -24,6 +24,7 @@
 //
 
 #include <wx/wx.h>
+#include <wx/thread.h>
 
 #include "PartFile.h"		// Interface declarations.
 #include "config.h"		// Needed for VERSION
@@ -135,14 +136,19 @@ public:
 typedef std::list<Chunk> ChunkList;
 
 
+
 #ifndef CLIENT_GUI
 
 CPartFile::CPartFile()
+	: m_asyncTaskMutex(new wxMutex()),
+	  m_asyncTaskCond(new wxCondition(*m_asyncTaskMutex))
 {
 	Init();
 }
 
 CPartFile::CPartFile(CSearchFile* searchresult)
+	: m_asyncTaskMutex(new wxMutex()),
+	  m_asyncTaskCond(new wxCondition(*m_asyncTaskMutex))
 {
 	Init();
 
@@ -235,6 +241,8 @@ CPartFile::CPartFile(CSearchFile* searchresult)
 
 
 CPartFile::CPartFile(const CED2KFileLink* fileLink)
+	: m_asyncTaskMutex(new wxMutex()),
+	  m_asyncTaskCond(new wxCondition(*m_asyncTaskMutex))
 {
 	Init();
 
@@ -254,6 +262,8 @@ CPartFile::CPartFile(const CED2KFileLink* fileLink)
 
 CPartFile::~CPartFile()
 {
+	RequestAsyncTaskShutdown();
+
 	// if it's not opened, it was completed or deleted
 	if (m_hpartfile.IsOpened()) {
 		FlushBuffer();
@@ -300,7 +310,11 @@ void CPartFile::CreatePartFile(bool isImporting)
 
 	if (!isImporting && thePrefs::GetAllocFullFile()) {
 		SetStatus(PS_ALLOCATING);
-		CThreadScheduler::AddTask(new CAllocateFileTask(this, thePrefs::AddNewFilesPaused()));
+		if (BeginAsyncTask()) {
+			if (!CThreadScheduler::AddTask(new CAllocateFileTask(this, thePrefs::AddNewFilesPaused()))) {
+				EndAsyncTask();
+			}
+		}
 	} else {
 		AllocationFinished();
 	}
@@ -2191,7 +2205,11 @@ void CPartFile::PerformFileComplete()
 	}
 
 	// Schedule task for completion of the file
-	CThreadScheduler::AddTask(new CCompletionTask(this));
+	if (BeginAsyncTask()) {
+		if (!CThreadScheduler::AddTask(new CCompletionTask(this))) {
+			EndAsyncTask();
+		}
+	}
 }
 
 
@@ -2232,6 +2250,7 @@ void CPartFile::Delete()
 	AddLogLineN(CFormat(_("Deleting file: %s")) % GetFileName());
 	// Barry - Need to tell any connected clients to stop sending the file
 	StopFile(true);
+	RequestAsyncTaskShutdown();
 	AddDebugLogLineN(logPartFile, wxT("\tStopped"));
 
 #ifdef __DEBUG__
@@ -3569,7 +3588,10 @@ void CPartFile::GetRatingAndComments(FileRatingList & list) const
 
 #else   // CLIENT_GUI
 
-CPartFile::CPartFile(const CEC_PartFile_Tag *tag) : CKnownFile(tag)
+CPartFile::CPartFile(const CEC_PartFile_Tag *tag)
+	: CKnownFile(tag),
+	  m_asyncTaskMutex(new wxMutex()),
+	  m_asyncTaskCond(new wxCondition(*m_asyncTaskMutex))
 {
 	Init();
 
@@ -3656,6 +3678,9 @@ void CPartFile::Init()
 		m_bAutoDownPriority = false;
 	}
 
+	m_asyncTaskCount = 0;
+	m_asyncTasksBlocked = false;
+
 	transferingsrc = 0; // new
 
 	kBpsDown = 0.0;
@@ -3696,6 +3721,54 @@ void CPartFile::Init()
 #ifndef CLIENT_GUI
 	m_CorruptionBlackBox = new CCorruptionBlackBox();
 #endif
+}
+
+
+bool CPartFile::BeginAsyncTask() const
+{
+	wxCHECK(m_asyncTaskMutex && m_asyncTaskCond, false);
+	wxMutexLocker lock(*m_asyncTaskMutex);
+	if (m_asyncTasksBlocked) {
+		return false;
+	}
+	++m_asyncTaskCount;
+	return true;
+}
+
+
+void CPartFile::EndAsyncTask() const
+{
+	wxCHECK_RET(m_asyncTaskMutex && m_asyncTaskCond, wxT("Async task primitives not initialized"));
+	wxMutexLocker lock(*m_asyncTaskMutex);
+	wxASSERT_MSG(m_asyncTaskCount > 0, wxT("Async task counter underflow"));
+	if (m_asyncTaskCount > 0) {
+		--m_asyncTaskCount;
+	}
+	if (m_asyncTasksBlocked && m_asyncTaskCount == 0) {
+		m_asyncTaskCond->Broadcast();
+	}
+}
+
+
+void CPartFile::RequestAsyncTaskShutdown() const
+{
+	wxCHECK_RET(m_asyncTaskMutex && m_asyncTaskCond, wxT("Async task primitives not initialized"));
+	wxMutexLocker lock(*m_asyncTaskMutex);
+	if (m_asyncTasksBlocked && m_asyncTaskCount == 0) {
+		return;
+	}
+	m_asyncTasksBlocked = true;
+	while (m_asyncTaskCount != 0) {
+		m_asyncTaskCond->Wait();
+	}
+}
+
+
+bool CPartFile::IsAsyncTaskShuttingDown() const
+{
+	wxCHECK(m_asyncTaskMutex, false);
+	wxMutexLocker lock(*m_asyncTaskMutex);
+	return m_asyncTasksBlocked;
 }
 
 wxString CPartFile::getPartfileStatus() const

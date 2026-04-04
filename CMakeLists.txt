@@ -3,7 +3,7 @@
 
 cmake_minimum_required (VERSION 3.15)
 
-project (wMule VERSION 1.0.1)
+project (wMule VERSION 1.0.2)
 
 # C++ Standard
 set(CMAKE_CXX_STANDARD 20)
@@ -25,6 +25,26 @@ set (PACKAGE_TARNAME "wMule")
 set (PACKAGE_URL "")
 set (PACKAGE_VERSION "${PROJECT_VERSION}")
 set (VERSION "${PROJECT_VERSION}")
+
+include_directories(${CMAKE_SOURCE_DIR}/src/include)
+include_directories(${WMULE_GENERATED_DIR})
+include_directories(${WMULE_GENERATED_COMMON_DIR})
+
+set(WMULE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(WMULE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(WMULE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+set(WMULE_VERSION_STRING "${PROJECT_VERSION}")
+
+set(WMULE_GENERATED_DIR ${CMAKE_BINARY_DIR}/generated)
+set(WMULE_GENERATED_COMMON_DIR ${WMULE_GENERATED_DIR}/common)
+message(STATUS "Using generated headers in ${WMULE_GENERATED_DIR}")
+file(MAKE_DIRECTORY ${WMULE_GENERATED_COMMON_DIR})
+
+configure_file(
+    ${CMAKE_SOURCE_DIR}/src/include/common/ClientVersion.h.in
+    ${WMULE_GENERATED_COMMON_DIR}/ClientVersion.h
+    @ONLY
+)
 
 # Default to Debug if in git repo
 set (DEFAULT_BUILD_TYPE "Release")

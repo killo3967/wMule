@@ -15,6 +15,8 @@ target_compile_definitions (muleunit
 target_include_directories (muleunit
 	PUBLIC ${wMule_BINARY_DIR}
 	PUBLIC ${CMAKE_SOURCE_DIR}/src/libs
+	PUBLIC ${WMULE_GENERATED_DIR}
+	PUBLIC ${WMULE_GENERATED_COMMON_DIR}
 	INTERFACE ${CMAKE_SOURCE_DIR}/unittests
 )
 

@@ -18,6 +18,21 @@ Reemplazar headers GPL largos (~24 líneas) por versión simplificada (~6 línea
 
 ---
 
+## [1.0.2] - 2026-04-04
+
+### Robustez x64 y Memoria (Fase 3)
+- IDs de búsqueda y resultados (`SearchList`, GUI y clientes EC) migrados a `wxUIntPtr`/`uint64_t`, evitando truncaciones de punteros o tamaños grandes en modo remoto.
+- `TextClient` y `wmulecmd` muestran correctamente volúmenes > 4 GB al usar `uint64_t` para `lFileSize` y formateo seguro.
+- `OtherStructs.h` y los headers empaquetados (`Header_Struct`, `ServerMet_Struct`, `Requested_Block_Struct`, etc.) incluyen `static_assert(sizeof)` documentados, detectando cualquier cambio involuntario en el layout binario.
+- Eliminados los últimos `sizeof(int)` heredados (estatísticas, sockets) y revisados los `memcpy`/`memmove` dinámicos para asegurar tamaños correctos en x64.
+
+### Validaciones
+- `cmake --build build-ninja --config Debug`
+- `ctest --output-on-failure -C Debug`
+- Smoke test manual (`wmule.exe` + `wmulecmd.exe`) cubriendo búsquedas extendidas y comandos EC.
+
+---
+
 ## [1.0.1] - 2026-03-27
 
 ### Hardening de rutas y config remota (Fase 2)

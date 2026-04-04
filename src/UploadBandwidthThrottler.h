@@ -53,11 +53,15 @@ public:
     void RemoveFromAllQueues(ThrottledFileSocket* socket);
 
     void EndThread();
+
+    void SignalActivity();
 private:
     void DoRemoveFromAllQueues(ThrottledControlSocket* socket);
     bool RemoveFromStandardListNoLock(ThrottledFileSocket* socket);
 
     void* Entry();
+
+    bool IsRunning() const;
 
     bool m_doRun;
 
@@ -83,6 +87,9 @@ private:
 
     uint64 m_SentBytesSinceLastCall;
     uint64 m_SentBytesSinceLastCallOverhead;
+
+    mutable wxMutex m_runMutex;
+    wxCondition m_runCond;
 };
 
 

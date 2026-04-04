@@ -1296,7 +1296,7 @@ CStatsData::CStatsData(int size)
 	//
 	// initial situation: all data is 0's
 	//
-	memset(m_data, 0, m_size*sizeof(int));
+	memset(m_data, 0, m_size * sizeof(uint32));
 	m_start_index = m_curr_index = 0;
 	m_end_index = size - 1;
 }

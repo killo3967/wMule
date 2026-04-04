@@ -34,6 +34,11 @@
 #include "DeadSourceList.h"	// Needed for CDeadSourceList
 #include "GapList.h"
 
+#include <memory>
+
+class wxMutex;
+class wxCondition;
+
 class CSearchFile;
 class CMemFile;
 class CFileDataIO;
@@ -171,6 +176,12 @@ public:
 	void	RemoveBlockFromList(uint64 start,uint64 end);
 	void	RemoveAllSources(bool bTryToSwap);
 	void	Delete();
+
+	// Async task coordination (internal use)
+	bool	BeginAsyncTask() const;
+	void	EndAsyncTask() const;
+	void	RequestAsyncTaskShutdown() const;
+	bool	IsAsyncTaskShuttingDown() const;
 	void	StopFile(bool bCancel = false);
 	void	PauseFile(bool bInsufficient = false);
 	void	ResumeFile();
@@ -287,6 +298,10 @@ public:
 
 	void	AllocationFinished();
 private:
+	mutable std::unique_ptr<wxMutex> m_asyncTaskMutex;
+	mutable std::unique_ptr<wxCondition> m_asyncTaskCond;
+	mutable uint32 m_asyncTaskCount = 0;
+	mutable bool m_asyncTasksBlocked = false;
 #ifndef CLIENT_GUI
 	// partfile handle (opened on demand)
 	CFileAutoClose	m_hpartfile;

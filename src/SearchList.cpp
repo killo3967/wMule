@@ -25,6 +25,8 @@
 
 #include "SearchList.h"		// Interface declarations.
 
+#include <limits>
+
 #include <protocol/Protocols.h>
 #include <protocol/kad/Constants.h>
 #include <tags/ClientTags.h>
@@ -60,6 +62,16 @@ void LexFree();
 
 #include "Parser.hpp"
 int yyerror(wxString errstr);
+
+wxUIntPtr CSearchList::GetAllResultsID()
+{
+	return static_cast<wxUIntPtr>(-1);
+}
+
+uint32 CSearchList::GetInvalidSearchID()
+{
+	return std::numeric_limits<uint32>::max();
+}
 
 
 static wxString s_strCurKadKeyword;
@@ -271,7 +283,7 @@ CSearchList::CSearchList()
 	: m_searchTimer(this, 0 /* Timer-id doesn't matter. */ ),
 	  m_searchType(LocalSearch),
 	  m_searchInProgress(false),
-	  m_currentSearch(-1),
+	  m_currentSearch(GetInvalidSearchID()),
 	  m_searchPacket(nullptr),
 	  m_64bitSearchPacket(false),
 	  m_KadSearchFinished(true)
@@ -288,10 +300,10 @@ CSearchList::~CSearchList()
 }
 
 
-void CSearchList::RemoveResults(long searchID)
+void CSearchList::RemoveResults(wxUIntPtr searchID)
 {
 	// A non-existent search id will just be ignored
-	Kademlia::CSearchManager::StopSearch(searchID, true);
+	Kademlia::CSearchManager::StopSearch(static_cast<uint32>(searchID), true);
 
 	ResultMap::iterator it = m_results.find(searchID);
 	if ( it != m_results.end() ) {
@@ -357,8 +369,8 @@ wxString CSearchList::StartNewSearch(uint32* searchID, SearchType type, CSearchP
 	m_searchType = type;
 	if (type == KadSearch) {
 		try {
-			if (*searchID == 0xffffffff) {
-				Kademlia::CSearchManager::StopSearch(0xffffffff, false);
+			if (*searchID == GetInvalidSearchID()) {
+				Kademlia::CSearchManager::StopSearch(GetInvalidSearchID(), false);
 			}
 
 			// searchstring will get tokenized there
@@ -505,7 +517,7 @@ void CSearchList::ProcessSharedFileList(const uint8_t* in_packet, uint32 size,
 {
 	wxCHECK_RET(sender, wxT("No sender in search-results from client."));
 
-	long searchID = reinterpret_cast<wxUIntPtr>(sender);
+	wxUIntPtr searchID = reinterpret_cast<wxUIntPtr>(sender);
 
 #ifndef AMULE_DAEMON
 	if (!theApp->amuledlg->m_searchwnd->CheckTabNameExists(sender->GetUserName())) {
@@ -611,7 +623,7 @@ bool CSearchList::AddToList(CSearchFile* toadd, bool clientResponse)
 }
 
 
-const CSearchResultList& CSearchList::GetSearchResults(long searchID) const
+const CSearchResultList& CSearchList::GetSearchResults(wxUIntPtr searchID) const
 {
 	ResultMap::const_iterator it = m_results.find(searchID);
 	if (it != m_results.end()) {
@@ -644,7 +656,7 @@ void CSearchList::AddFileToDownloadByHash(const CMD4Hash& hash, uint8 cat)
 void CSearchList::StopSearch(bool globalOnly)
 {
 	if (m_searchType == GlobalSearch) {
-		m_currentSearch = -1;
+		m_currentSearch = GetInvalidSearchID();
 		delete m_searchPacket;
 		m_searchPacket = nullptr;
 		m_searchInProgress = false;
@@ -657,7 +669,7 @@ void CSearchList::StopSearch(bool globalOnly)
 		CoreNotify_Search_Update_Progress(0xffff);
 	} else if (m_searchType == KadSearch && !globalOnly) {
 		Kademlia::CSearchManager::StopSearch(m_currentSearch, false);
-		m_currentSearch = -1;
+		m_currentSearch = GetInvalidSearchID();
 	}
 }
 

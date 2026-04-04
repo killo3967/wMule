@@ -100,7 +100,7 @@ public:
 	 *
 	 * @param nResult The ID of the results or Zero to simply reset the list.
 	 */
-	void	ShowResults( long ResultsId );
+	void	ShowResults( wxUIntPtr ResultsId );
 
 	/**
 	 * Updates the colors of item at the specified index.

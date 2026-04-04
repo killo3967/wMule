@@ -614,10 +614,12 @@ void CamulecmdApp::ShowResults(CResultMap results_map)
 
 		output.Printf(wxT("%lu.      "), id);
 		output = output.SubString(0, nr_max).Append(file->sFileName).Append(' ', name_max);
-		mb.Printf(wxT("     %ld"), file->lFileSize/1024/1024);
-		kb.Printf(wxT(".%03ld"), file->lFileSize/1024%1024);
+		unsigned long long megaPart = static_cast<unsigned long long>(file->lFileSize / (1024ULL * 1024ULL));
+		unsigned long long kiloPart = static_cast<unsigned long long>((file->lFileSize / 1024ULL) % 1024ULL);
+		mb.Printf(wxT("     %llu"), megaPart);
+		kb.Printf(wxT(".%03llu"), kiloPart);
 		output = output.SubString(0, nr_max + name_max + mb_max - mb.Length() ).Append(mb).Append(kb);
-		printf("%s     %ld\n",(const char*)unicode2char(output), file->lSourceCount );
+		printf("%s     %u\n",(const char*)unicode2char(output), file->lSourceCount );
 	}
 }
 

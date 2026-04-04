@@ -27,6 +27,8 @@
 #define OTHERSTRUCTS_H
 
 #include <common/Path.h>
+#include "Types.h"
+#include <cstddef>
 
 // Defined in <zlib.h>
 struct z_stream_s;
@@ -47,6 +49,7 @@ struct Header_Struct{
 #else
 __attribute__((__packed__));
 #endif
+static_assert(sizeof(Header_Struct) == 6, "Header_Struct must remain packed to 6 bytes");
 
 #if defined(_MSC_VER) || defined(__SUNPRO_CC)
 #pragma pack(1)
@@ -61,6 +64,7 @@ struct UDP_Header_Struct {
 #else
 __attribute__((__packed__));
 #endif
+static_assert(sizeof(UDP_Header_Struct) == 2, "UDP header must remain 2 bytes");
 
 #if defined(_MSC_VER) || defined(__SUNPRO_CC)
 ;
@@ -79,6 +83,7 @@ struct Requested_Block_Struct{
 #else
 __attribute__((__packed__));
 #endif
+static_assert(sizeof(Requested_Block_Struct) == 8 + 8 + 4 + 16 + 4, "Requested_Block_Struct size mismatch");
 
 struct Pending_Block_Struct{
 	Requested_Block_Struct*	block;
@@ -107,6 +112,7 @@ struct ServerMet_Struct {
 #else
 __attribute__((__packed__));
 #endif
+static_assert(sizeof(ServerMet_Struct) == 10, "ServerMet_Struct must remain 10 bytes");
 
 struct TransferredData {
 	uint32	datalen;
@@ -132,6 +138,7 @@ struct Chunk {
 #else
 __attribute__((__packed__));
 #endif
+static_assert(sizeof(Chunk) == 4, "Chunk struct must remain 4 bytes");
 
 struct Category_Struct
 {

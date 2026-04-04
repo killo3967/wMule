@@ -221,13 +221,15 @@ if (NEED_LIB_MULEAPPCOMMON)
 		PRIVATE WXUSINGDLL
 	)
 
-	target_include_directories (muleappcommon
-		PUBLIC ${wMule_BINARY_DIR}
-		PUBLIC ${EC_INCLUDE_DIR}
-		PRIVATE ${INCLUDE_INCLUDE_DIR}
-		PRIVATE ${LIBS_INCLUDE_DIR}
-		PRIVATE ${ZLIB_INCLUDE_DIR}
-	)
+target_include_directories (muleappcommon
+	PUBLIC ${wMule_BINARY_DIR}
+	PUBLIC ${WMULE_GENERATED_DIR}
+	PUBLIC ${CMAKE_SOURCE_DIR}/src/include
+	PUBLIC ${EC_INCLUDE_DIR}
+	PRIVATE ${INCLUDE_INCLUDE_DIR}
+	PRIVATE ${LIBS_INCLUDE_DIR}
+	PRIVATE ${ZLIB_INCLUDE_DIR}
+)
 
 	target_link_libraries(muleappcommon
 		PUBLIC wxWidgets::BASE
@@ -310,13 +312,15 @@ if (NEED_LIB_MULEAPPCORE)
 		PRIVATE WXUSINGDLL
 	)
 
-	target_include_directories (muleappcore
-		PRIVATE ${CMAKE_BINARY_DIR}
-		PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
-		PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
-		PRIVATE ${INCLUDE_INCLUDE_DIR}
-		PRIVATE ${LIBS_INCLUDE_DIR}
-	)
+target_include_directories (muleappcore
+	PRIVATE ${CMAKE_BINARY_DIR}
+	PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
+	PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+	PRIVATE ${INCLUDE_INCLUDE_DIR}
+	PRIVATE ${LIBS_INCLUDE_DIR}
+	PRIVATE ${WMULE_GENERATED_DIR}
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
 
 	if (ENABLE_UPNP)
 		target_link_libraries (muleappcore PUBLIC wmule_upnp_sdk)
@@ -355,11 +359,13 @@ if (NEED_LIB_MULEAPPGUI)
 		PRIVATE WXUSINGDLL
 	)
 
-	target_include_directories (muleappgui
-		PUBLIC ${wMule_BINARY_DIR}
-		PUBLIC ${INCLUDE_INCLUDE_DIR}
-		PUBLIC ${LIBS_INCLUDE_DIR}
-	)
+target_include_directories (muleappgui
+	PUBLIC ${wMule_BINARY_DIR}
+	PUBLIC ${INCLUDE_INCLUDE_DIR}
+	PUBLIC ${LIBS_INCLUDE_DIR}
+	PUBLIC ${WMULE_GENERATED_DIR}
+	PUBLIC ${CMAKE_SOURCE_DIR}/src/include
+)
 
 	target_link_libraries (muleappgui
 		PRIVATE wxWidgets::CORE
@@ -380,11 +386,13 @@ IF (NEED_LIB_MULESOCKET)
 		PRIVATE wxUSE_GUI=0
 	)
 	
-	target_include_directories (mulesocket
-		PUBLIC ${wMule_BINARY_DIR}
-		PUBLIC ${INCLUDE_INCLUDE_DIR}
-		PUBLIC ${LIBS_INCLUDE_DIR}
-	)
+target_include_directories (mulesocket
+	PUBLIC ${wMule_BINARY_DIR}
+	PUBLIC ${INCLUDE_INCLUDE_DIR}
+	PUBLIC ${LIBS_INCLUDE_DIR}
+	PUBLIC ${WMULE_GENERATED_DIR}
+	PUBLIC ${CMAKE_SOURCE_DIR}/src/include
+)
 
 	if (ENABLE_BOOST)
 		target_link_libraries (mulesocket

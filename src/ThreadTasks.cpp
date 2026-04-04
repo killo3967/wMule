@@ -496,9 +496,14 @@ void CCompletionTask::Entry()
 void CCompletionTask::OnExit()
 {
 	// Notify the app that the completion has finished for this file.
-	CCompletionEvent evt(m_error, m_owner, m_newName);
+	if (m_owner && !m_owner->IsAsyncTaskShuttingDown()) {
+		CCompletionEvent evt(m_error, m_owner, m_newName);
+		wxPostEvent(wxTheApp, evt);
+	}
 
-	wxPostEvent(wxTheApp, evt);
+	if (m_owner) {
+		m_owner->EndAsyncTask();
+	}
 }
 
 
@@ -616,9 +621,14 @@ void CAllocateFileTask::Entry()
 void CAllocateFileTask::OnExit()
 {
 	// Notify the app that the preallocation has finished for this file.
-	CAllocFinishedEvent evt(m_file, m_pause, m_result);
+	if (m_file && !m_file->IsAsyncTaskShuttingDown()) {
+		CAllocFinishedEvent evt(m_file, m_pause, m_result);
+		wxPostEvent(wxTheApp, evt);
+	}
 
-	wxPostEvent(wxTheApp, evt);
+	if (m_file) {
+		m_file->EndAsyncTask();
+	}
 }
 
 

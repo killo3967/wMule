@@ -1,9 +1,9 @@
 # wMule Build Memory - AI Agent Documentation
 
 **Project:** wMule (Windows Mule)  
-**Version:** 1.0.1  
+**Version:** 1.0.2  
 **Base:** aMule 2.4.0  
-**Date:** 2026-03-29  
+**Date:** 2026-04-04  
 **Author:** Tomas Platero  
 
 ---
@@ -62,6 +62,27 @@ The variable `${amule_BINARY_DIR}` was used but never defined because the projec
 
 ### Problem: Executable Names
 **Solution:** Changed `add_executable (amule` → `add_executable (wmule` and similar for amulecmd
+
+---
+
+## Release 1.0.2 – 2026-04-04
+
+### Objetivo
+Cerrar la **Fase 3 – Robustez x64 y Memoria** asegurando que IDs, estructuras empaquetadas y buffers funcionen correctamente en builds de 64 bits.
+
+### Cambios principales
+- `SearchList`, `amulecmd` y la capa EC usan ahora `wxUIntPtr`/`uint64_t` para evitar truncaciones de punteros o tamaños de archivo al transportar resultados remotos.
+- Los headers críticos (`Header_Struct`, `ServerMet_Struct`, `Requested_Block_Struct`, etc.) cuentan con `static_assert(sizeof)` y documentación de layout para detectar automáticamente cualquier regresión de empaquetado.
+- Se eliminaron supuestos de `sizeof(int)` en estadísticas y se revisaron rutas con `memcpy`/`memmove` dinámicos para que cada lectura/escritura use el tipo correcto.
+- Documentación (`PLAN_MODERNIZACION_2.0.md`) actualizada con el estado de la fase, checklist cumplido y deuda estética pendiente en la UI de búsquedas avanzadas.
+
+### Validaciones
+- `cmake --build build-ninja --config Debug`
+- `ctest --output-on-failure -C Debug`
+- Smoke test manual de `wmule.exe` + `wmulecmd.exe` (búsquedas extendidas y consultas EC) tras el hardening x64.
+
+### Resultado
+- Se etiqueta **wMule 1.0.2** como baseline posterior a Fase 3, con compatibilidad total con los clientes EC existentes y métricas listas para iniciar la Fase 4.
 
 ---
 
@@ -210,9 +231,9 @@ Los binarios siempre buscan catálogos debajo del ejecutable (`<exe>/locale/<lan
 
 From `src/include/common/ClientVersion.h`:
 ```cpp
-#define VERSION      1.0.1
-#define MOD_VERSION "1.0.1"
-#define MOD_VERSION_LONG "wMule 1.0.1"
+#define VERSION      1.0.2
+#define MOD_VERSION "1.0.2"
+#define MOD_VERSION_LONG "wMule 1.0.2"
 ```
 
 ---

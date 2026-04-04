@@ -362,7 +362,7 @@ void CSearchListCtrl::UpdateItemColor(long index)
 }
 
 
-void CSearchListCtrl::ShowResults( long ResultsID )
+void CSearchListCtrl::ShowResults( wxUIntPtr ResultsID )
 {
 	DeleteAllItems();
 	m_nResultsID = ResultsID;

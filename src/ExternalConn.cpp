@@ -1039,7 +1039,7 @@ static CECPacket *Get_EC_Response_Search_Results(const CECPacket *request)
 	// request can contain list of queried items
 	CTagSet<uint32, EC_TAG_SEARCHFILE> queryitems(request);
 
-	const CSearchResultList& list = theApp->searchlist->GetSearchResults(0xffffffff);
+	const CSearchResultList& list = theApp->searchlist->GetSearchResults(CSearchList::GetAllResultsID());
 	CSearchResultList::const_iterator it = list.begin();
 	while (it != list.end()) {
 		CSearchFile* sf = *it++;
@@ -1055,7 +1055,7 @@ static CECPacket *Get_EC_Response_Search_Results(CObjTagMap &tagmap)
 {
 	CECPacket *response = new CECPacket(EC_OP_SEARCH_RESULTS);
 
-	const CSearchResultList& list = theApp->searchlist->GetSearchResults(0xffffffff);
+	const CSearchResultList& list = theApp->searchlist->GetSearchResults(CSearchList::GetAllResultsID());
 	CSearchResultList::const_iterator it = list.begin();
 	while (it != list.end()) {
 		CSearchFile* sf = *it++;
@@ -1098,7 +1098,7 @@ static CECPacket *Get_EC_Response_Search(const CECPacket *request)
 	wxString response;
 
 	const CEC_Search_Tag *search_request = static_cast<const CEC_Search_Tag *>(request->GetFirstTagSafe());
-	theApp->searchlist->RemoveResults(0xffffffff);
+	theApp->searchlist->RemoveResults(CSearchList::GetAllResultsID());
 
 	CSearchList::CSearchParams params;
 	params.searchString	= search_request->SearchText();
@@ -1122,7 +1122,7 @@ static CECPacket *Get_EC_Response_Search(const CECPacket *request)
 			}
 		/* fall through */
 		case EC_SEARCH_LOCAL: {
-			uint32 search_id = 0xffffffff;
+	uint32 search_id = CSearchList::GetInvalidSearchID();
 			wxString error = theApp->searchlist->StartNewSearch(&search_id, core_search_type, params);
 			if (!error.IsEmpty()) {
 				response = error;

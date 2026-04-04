@@ -44,7 +44,8 @@
  * The constructor starts the thread.
  */
 UploadBandwidthThrottler::UploadBandwidthThrottler()
-		: wxThread( wxTHREAD_JOINABLE )
+		: wxThread(wxTHREAD_JOINABLE)
+		, m_runCond(m_runMutex)
 {
 	m_SentBytesSinceLastCall = 0;
 	m_SentBytesSinceLastCallOverhead = 0;
@@ -126,6 +127,8 @@ void UploadBandwidthThrottler::AddToStandardList(uint32 index, ThrottledFileSock
 
 		m_StandardOrder_list.insert(m_StandardOrder_list.begin() + index, socket);
 	}
+
+	SignalActivity();
 }
 
 
@@ -175,16 +178,20 @@ bool UploadBandwidthThrottler::RemoveFromStandardListNoLock(ThrottledFileSocket*
 */
 void UploadBandwidthThrottler::QueueForSendingControlPacket(ThrottledControlSocket* socket, bool hasSent)
 {
-	// Get critical section
-	wxMutexLocker lock( m_tempQueueLocker );
-
-	if ( m_doRun ) {
-		if( hasSent ) {
-			m_TempControlQueueFirst_list.push_back(socket);
-		} else {
-			m_TempControlQueue_list.push_back(socket);
-		}
+	if (!IsRunning()) {
+		return;
 	}
+
+	// Get critical section
+	wxMutexLocker lock(m_tempQueueLocker);
+
+	if (hasSent) {
+		m_TempControlQueueFirst_list.push_back(socket);
+	} else {
+		m_TempControlQueue_list.push_back(socket);
+	}
+
+	SignalActivity();
 }
 
 
@@ -198,15 +205,17 @@ void UploadBandwidthThrottler::QueueForSendingControlPacket(ThrottledControlSock
  */
 void UploadBandwidthThrottler::DoRemoveFromAllQueues(ThrottledControlSocket* socket)
 {
-	if ( m_doRun ) {
-		// Remove this socket from control packet queue
-		EraseValue( m_ControlQueue_list, socket );
-		EraseValue( m_ControlQueueFirst_list, socket );
-
-		wxMutexLocker lock( m_tempQueueLocker );
-		EraseValue( m_TempControlQueue_list, socket );
-		EraseValue( m_TempControlQueueFirst_list, socket );
+	if (!IsRunning()) {
+		return;
 	}
+
+	// Remove this socket from control packet queue
+	EraseValue( m_ControlQueue_list, socket );
+	EraseValue( m_ControlQueueFirst_list, socket );
+
+	wxMutexLocker lock( m_tempQueueLocker );
+	EraseValue( m_TempControlQueue_list, socket );
+	EraseValue( m_TempControlQueueFirst_list, socket );
 }
 
 
@@ -220,14 +229,16 @@ void UploadBandwidthThrottler::RemoveFromAllQueues(ThrottledControlSocket* socke
 
 void UploadBandwidthThrottler::RemoveFromAllQueues(ThrottledFileSocket* socket)
 {
+	if (!IsRunning()) {
+		return;
+	}
+
 	wxMutexLocker lock( m_sendLocker );
 
-	if (m_doRun) {
-		DoRemoveFromAllQueues(socket);
+	DoRemoveFromAllQueues(socket);
 
-		// And remove it from upload slots
-		RemoveFromStandardListNoLock(socket);
-	}
+	// And remove it from upload slots
+	RemoveFromStandardListNoLock(socket);
 }
 
 
@@ -238,16 +249,16 @@ void UploadBandwidthThrottler::RemoveFromAllQueues(ThrottledFileSocket* socket)
  */
 void UploadBandwidthThrottler::EndThread()
 {
-	if (m_doRun) {	// do it only once
-		{
-			wxMutexLocker lock(m_sendLocker);
-
-			// signal the thread to stop looping and exit.
-			m_doRun = false;
+	{
+		wxMutexLocker lock(m_runMutex);
+		if (!m_doRun) {
+			return;
 		}
-
-		Wait();
+		m_doRun = false;
+		m_runCond.Broadcast();
 	}
+
+	Wait();
 }
 
 
@@ -272,7 +283,11 @@ void* UploadBandwidthThrottler::Entry()
 	uint32 rememberedSlotCounter = 0;
 	uint32 extraSleepTime = TIME_BETWEEN_UPLOAD_LOOPS;
 
-	while (m_doRun && !TestDestroy()) {
+	while (true) {
+		if (!IsRunning() || TestDestroy()) {
+			break;
+		}
+
 		uint32 timeSinceLastLoop = GetTickCountFullRes() - lastLoopTick;
 
 		// Calculate data rate
@@ -296,19 +311,22 @@ void* UploadBandwidthThrottler::Entry()
 			// We have sent more than allowed in last cycle so we have to wait now
 			// until we can send at least 1 byte.
 			sleepTime = std::max((-bytesToSpend + 1) * 1000 / allowedDataRate + 2, // add 2 ms to allow for rounding inaccuracies
-									extraSleepTime);
+								extraSleepTime);
 		} else {
 			// We could send at once, but sleep a while to not suck up all cpu
 			sleepTime = extraSleepTime;
 		}
 
 		if (timeSinceLastLoop < sleepTime) {
-			Sleep(sleepTime-timeSinceLastLoop);
-		}
-
-		// Check after sleep in case the thread has been signaled to end
-		if (!m_doRun || TestDestroy()) {
-			break;
+			const uint32 waitTime = sleepTime - timeSinceLastLoop;
+			wxMutexLocker runLock(m_runMutex);
+			if (!m_doRun || TestDestroy()) {
+				break;
+			}
+			m_runCond.WaitTimeout(waitTime);
+			if (!m_doRun || TestDestroy()) {
+				break;
+			}
 		}
 
 		const uint32 thisLoopTick = GetTickCountFullRes();
@@ -450,5 +468,20 @@ void* UploadBandwidthThrottler::Entry()
 	m_StandardOrder_list.clear();
 
 	return 0;
+}
+
+bool UploadBandwidthThrottler::IsRunning() const
+{
+	wxMutexLocker lock(m_runMutex);
+	return m_doRun;
+}
+
+
+void UploadBandwidthThrottler::SignalActivity()
+{
+	wxMutexLocker lock(m_runMutex);
+	if (m_doRun) {
+		m_runCond.Signal();
+	}
 }
 // File_checked_for_headers

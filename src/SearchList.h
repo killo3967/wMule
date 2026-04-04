@@ -56,6 +56,8 @@ typedef std::vector<CSearchFile*> CSearchResultList;
 class CSearchList : public wxEvtHandler
 {
 public:
+	static wxUIntPtr GetAllResultsID();
+	static uint32 GetInvalidSearchID();
 	//! Structure used to pass search-parameters.
 	struct CSearchParams
 	{
@@ -109,10 +111,10 @@ public:
 	 *
 	 * If the search is not valid, an empty list is returned.
 	 */
-	const	CSearchResultList& GetSearchResults(long searchID) const;
+	const	CSearchResultList& GetSearchResults(wxUIntPtr searchID) const;
 
 	/** Removes all results for the specified search. */
-	void	RemoveResults(long searchID);
+	void	RemoveResults(wxUIntPtr searchID);
 
 
 	/** Finds the search-result (by hash) and downloads it in the given category. */
@@ -203,8 +205,8 @@ private:
 	//! Specifies if a search is being performed.
 	bool		m_searchInProgress;
 
-	//! The ID of the current search.
-	long		m_currentSearch;
+	//! The ID of the current search (GetInvalidSearchID() means "no search").
+	uint32_t	m_currentSearch;
 
 	//! The current packet used for searches.
 	CPacket*	m_searchPacket;
@@ -220,7 +222,7 @@ private:
 	CQueueObserver<CServer*> m_serverQueue;
 
 	//! Shorthand for the map of results (key is a SearchID).
-	typedef std::map<long, CSearchResultList> ResultMap;
+	typedef std::map<wxUIntPtr, CSearchResultList> ResultMap;
 
 	//! Map of all search-results added.
 	ResultMap	m_results;

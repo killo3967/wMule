@@ -30,9 +30,11 @@
 
 #include <algorithm>			// Needed for std::sort		// Do_not_auto_remove (mingw-gcc-3.4.5)
 #include <chrono>			// Needed for std::chrono::milliseconds
+#include <wx/thread.h>
 
 //! Global lock the scheduler and its thread.
 static wxMutex s_lock;
+static wxCondition s_taskEvent(s_lock);
 //! Pointer to the global scheduler instance (automatically instantiated).
 static CThreadScheduler* s_scheduler = nullptr;
 //! Specifies if the scheduler is running.
@@ -258,6 +260,8 @@ bool CThreadScheduler::DoAddTask(CThreadTask* task, bool overwrite)
 		CreateSchedulerThread();
 	}
 
+	s_taskEvent.Signal();
+
 	return true;
 }
 
@@ -268,77 +272,84 @@ void* CThreadScheduler::Entry()
 
 	CThreadPool& pool = CThreadPool::Instance();
 
-	while (!m_thread->TestDestroy()) {
+	while (true) {
 		CThreadTask* rawTask = nullptr;
 
 		{
 			wxMutexLocker lock(s_lock);
 
-			// Resort tasks by priority/age if list has been modified.
-			if (m_tasksDirty) {
-				AddDebugLogLineN(logThreads, wxT("Resorting tasks"));
-				std::sort(m_tasks.begin(), m_tasks.end(), CTaskSorter());
-				m_tasksDirty = false;
-			} else if (m_tasks.empty() && m_activeTasks == 0) {
+			while (m_tasks.empty() && m_activeTasks > 0 && !m_thread->TestDestroy()) {
+				s_taskEvent.Wait();
+			}
+
+			if (m_thread->TestDestroy()) {
+				break;
+			}
+
+			if (m_tasks.empty() && m_activeTasks == 0) {
 				AddDebugLogLineN(logThreads, wxT("No more tasks, stopping"));
 				break;
 			}
 
-			// Select the next task if available
 			if (!m_tasks.empty()) {
+				if (m_tasksDirty) {
+					AddDebugLogLineN(logThreads, wxT("Resorting tasks"));
+					std::sort(m_tasks.begin(), m_tasks.end(), CTaskSorter());
+					m_tasksDirty = false;
+				}
+
 				rawTask = m_tasks.front().first;
 				m_tasks.pop_front();
 				m_currentTask = rawTask;
+				++m_activeTasks;
 			}
 		}
 
-		// Execute task in parallel via ThreadPool
-		if (rawTask) {
-			AddDebugLogLineN(logThreads, wxT("Current task: ") + rawTask->GetType() + wxT(" - ") + rawTask->GetDesc());
-			rawTask->m_owner = m_thread;
-			++m_activeTasks;
-
-			pool.Enqueue([this, rawTask]() {
-				rawTask->Entry();
-				rawTask->OnExit();
-
-				// Check if this was the last task of this type
-				bool isLastTask = false;
-
-				{
-					wxMutexLocker lock(s_lock);
-
-					if (!rawTask->m_abort) {
-						AddDebugLogLineN(logThreads,
-							CFormat(wxT("Completed task '%s%s', %u tasks remaining."))
-								% rawTask->GetType()
-								% (rawTask->GetDesc().IsEmpty() ? wxString() : (wxT(" - ") + rawTask->GetDesc()))
-								% m_tasks.size() );
-
-						CDescMap& map = m_taskDescs[rawTask->GetType()];
-						if (!map.erase(rawTask->GetDesc())) {
-							wxFAIL;
-						} else if (map.empty()) {
-							m_taskDescs.erase(rawTask->GetType());
-							isLastTask = true;
-						}
-					}
-
-					m_currentTask = nullptr;
-					--m_activeTasks;
-				}
-
-				if (isLastTask) {
-					AddDebugLogLineN(logThreads, wxT("Last task, calling OnLastTask"));
-					rawTask->OnLastTask();
-				}
-
-				delete rawTask;
-			});
-		} else {
-			// No task available, wait for active tasks to complete
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		if (!rawTask) {
+			continue;
 		}
+
+		AddDebugLogLineN(logThreads, wxT("Current task: ") + rawTask->GetType() + wxT(" - ") + rawTask->GetDesc());
+		rawTask->m_owner = m_thread;
+
+		pool.Enqueue([this, rawTask]() {
+			rawTask->Entry();
+			rawTask->OnExit();
+
+			// Check if this was the last task of this type
+			bool isLastTask = false;
+
+			{
+				wxMutexLocker lock(s_lock);
+
+				if (!rawTask->m_abort) {
+					AddDebugLogLineN(logThreads,
+						CFormat(wxT("Completed task '%s%s', %u tasks remaining."))
+							% rawTask->GetType()
+							% (rawTask->GetDesc().IsEmpty() ? wxString() : (wxT(" - ") + rawTask->GetDesc()))
+							% m_tasks.size());
+
+					CDescMap& map = m_taskDescs[rawTask->GetType()];
+					if (!map.erase(rawTask->GetDesc())) {
+						wxFAIL;
+					} else if (map.empty()) {
+						m_taskDescs.erase(rawTask->GetType());
+						isLastTask = true;
+					}
+				}
+
+				m_currentTask = nullptr;
+				--m_activeTasks;
+				s_taskEvent.Signal();
+			}
+
+			if (isLastTask) {
+				AddDebugLogLineN(logThreads, wxT("Last task, calling OnLastTask"));
+				rawTask->OnLastTask();
+			}
+
+			delete rawTask;
+		});
 	}
 
 	// Wait for all active tasks to complete before exiting
