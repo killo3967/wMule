@@ -1,7 +1,7 @@
 # wMule
 
 <p align="center">
-  <img src="assets/wmule.png" alt="wMule logo" width="320">
+  <img src="wmule.png" alt="wMule logo" width="320">
 </p>
 
 **Modernized aMule port for Windows with updated architecture and current technologies**
