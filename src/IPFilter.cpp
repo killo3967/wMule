@@ -539,7 +539,7 @@ void CIPFilter::OnIPFilterEvent(CIPFilterEvent& evt)
 	}
 	// Now start networks we didn't start earlier
 	if (m_connectToAnyServerWhenReady || m_startKADWhenReady) {
-		AddLogLineC(_("Connecting"));
+		AddLogLineN(_("Connecting"));
 	}
 	if (m_connectToAnyServerWhenReady) {
 		m_connectToAnyServerWhenReady = false;

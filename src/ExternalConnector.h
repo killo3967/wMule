@@ -49,6 +49,7 @@
 #define CMD_ERR_MUST_HAVE_PARAM	-6
 #define CMD_ERR_INVALID_ARG	-7
 #define CMD_ERR_INCOMPLETE	-8
+#define CMD_ERR_NOTSUPPORTED	-9
 
 enum Params {
 	CMD_PARAM_NEVER,

@@ -36,8 +36,7 @@
 
 #include <memory>
 
-class wxMutex;
-class wxCondition;
+#include <common/threading/ThreadGuards.h>
 
 class CSearchFile;
 class CMemFile;
@@ -180,8 +179,9 @@ public:
 	// Async task coordination (internal use)
 	bool	BeginAsyncTask() const;
 	void	EndAsyncTask() const;
-	void	RequestAsyncTaskShutdown() const;
+	void	RequestAsyncTaskShutdown(std::chrono::milliseconds timeout = std::chrono::milliseconds(0)) const;
 	bool	IsAsyncTaskShuttingDown() const;
+	Threading::PartFileAsyncSnapshot GetAsyncSnapshot() const;
 	void	StopFile(bool bCancel = false);
 	void	PauseFile(bool bInsufficient = false);
 	void	ResumeFile();
@@ -298,10 +298,7 @@ public:
 
 	void	AllocationFinished();
 private:
-	mutable std::unique_ptr<wxMutex> m_asyncTaskMutex;
-	mutable std::unique_ptr<wxCondition> m_asyncTaskCond;
-	mutable uint32 m_asyncTaskCount = 0;
-	mutable bool m_asyncTasksBlocked = false;
+	mutable Threading::PartFileAsyncGate m_asyncGate;
 #ifndef CLIENT_GUI
 	// partfile handle (opened on demand)
 	CFileAutoClose	m_hpartfile;

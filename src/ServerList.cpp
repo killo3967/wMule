@@ -171,9 +171,9 @@ bool CServerList::LoadServerMet(const CPath& path)
 
 		// cppcheck-suppress duplicateBranch
 		if (!merge) {
-			AddLogLineC(CFormat(wxPLURAL("%i server in server.met found", "%i servers in server.met found", fservercount)) % fservercount);
+			AddLogLineN(CFormat(wxPLURAL("%i server in server.met found", "%i servers in server.met found", fservercount)) % fservercount);
 		} else {
-			AddLogLineC(CFormat(wxPLURAL("%d server added", "%d servers added", iAddCount)) % iAddCount);
+			AddLogLineN(CFormat(wxPLURAL("%d server added", "%d servers added", iAddCount)) % iAddCount);
 		}
 	} catch (const CInvalidPacket& err) {
 		AddLogLineC(_("Error: the file 'server.met' is corrupted: ") + err.what());

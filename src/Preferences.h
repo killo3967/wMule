@@ -232,7 +232,10 @@ typedef CPreferences thePrefs;
 class CPreferences
 {
 public:
-	friend class PrefsUnifiedDlg;
+	static constexpr uint32 THREAD_DRAIN_TIMEOUT_MIN_MS = 1000;
+	static constexpr uint32 THREAD_DRAIN_TIMEOUT_MAX_MS = 600000;
+
+ 	friend class PrefsUnifiedDlg;
 
 	CPreferences();
 	~CPreferences();
@@ -359,6 +362,10 @@ public:
 	static void		SetVerbose(bool val)		{ s_bVerbose = val; }
 	static bool		GetVerboseLogfile()			{ return s_bVerboseLogfile; }
 	static void		SetVerboseLogfile(bool val)		{ s_bVerboseLogfile = val; }
+	static bool		GetVerboseThreading()		{ return s_verboseThreading; }
+	static void		SetVerboseThreading(bool val)		{ s_verboseThreading = val; }
+	static uint32	GetThreadDrainTimeoutMs()	{ return std::clamp(s_threadDrainTimeoutMs, THREAD_DRAIN_TIMEOUT_MIN_MS, THREAD_DRAIN_TIMEOUT_MAX_MS); }
+	static void		SetThreadDrainTimeoutMs(uint32 val);
 	static bool		GetPreviewPrio()		{ return s_bpreviewprio; }
 	static void		SetPreviewPrio(bool in)		{ s_bpreviewprio = in; }
 	static bool		StartNextFile()			{ return s_bstartnextfile; }
@@ -767,7 +774,9 @@ protected:
 	static uint32	s_uMinFreeDiskSpace;
 	static wxString	s_yourHostname;
 	static bool	s_bVerbose;
-	static bool s_bVerboseLogfile;
+	static bool	s_bVerboseLogfile;
+	static bool	s_verboseThreading;
+	static uint32	s_threadDrainTimeoutMs;
 	static bool	s_bmanualhighprio;
 	static bool	s_bstartnextfile;
 	static bool	s_bstartnextfilesame;

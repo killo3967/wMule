@@ -98,8 +98,11 @@ enum {
 	CMD_ID_SEARCH_RESULTS,
 	CMD_ID_SEARCH_PROGRESS,
 	CMD_ID_DOWNLOAD,
-	// IDs for deprecated commands
-	CMD_ID_SET_IPFILTER
+	// IDs for deprecated/compat commands
+	CMD_ID_SET_IPFILTER,
+	CMD_ID_SET_THREADING_VERBOSE,
+	CMD_ID_SET_THREADING_TIMEOUT,
+	CMD_ID_GET_THREADING_VERBOSE
 
 };
 
@@ -566,6 +569,12 @@ int CamulecmdApp::ProcessCommand(int CmdId)
 			}
 			break;
 
+		case CMD_ID_SET_THREADING_VERBOSE:
+		case CMD_ID_SET_THREADING_TIMEOUT:
+		case CMD_ID_GET_THREADING_VERBOSE:
+			Show(_("Threading toggles no están disponibles vía EC. Usá la GUI local o seguí docs/debug/threading.md (manual-tests/threading/VerboseThreading.ps1)."));
+			return CMD_ERR_NOTSUPPORTED;
+
 		default:
 			return CMD_ERR_PROCESS_CMD;
 	}
@@ -935,11 +944,18 @@ void CamulecmdApp::OnInitCommandSet()
 			 wxTRANSLATE("Valid filtering levels are in the range 0-255, and it's default (initial)\nvalue is 127.\n"), CMD_PARAM_ALWAYS);
 
 	tmp2 = tmp->AddCommand(wxT("BwLimit"), CMD_ERR_INCOMPLETE, wxTRANSLATE("Set bandwidth limits."),
-			       wxTRANSLATE("The value given to these commands has to be in kilobytes/sec.\n"), CMD_PARAM_NEVER);
+		       wxTRANSLATE("The value given to these commands has to be in kilobytes/sec.\n"), CMD_PARAM_NEVER);
 	tmp2->AddCommand(wxT("Up"), CMD_ID_SET_BWLIMIT_UP, wxTRANSLATE("Set upload bandwidth limit."),
-			 wxTRANSLATE("The given value must be in kilobytes/sec.\n"), CMD_PARAM_ALWAYS);
+		 wxTRANSLATE("The given value must be in kilobytes/sec.\n"), CMD_PARAM_ALWAYS);
 	tmp2->AddCommand(wxT("Down"), CMD_ID_SET_BWLIMIT_DOWN, wxTRANSLATE("Set download bandwidth limit."),
-			 wxTRANSLATE("The given value must be in kilobytes/sec.\n"), CMD_PARAM_ALWAYS);
+		 wxTRANSLATE("The given value must be in kilobytes/sec.\n"), CMD_PARAM_ALWAYS);
+
+	tmp2 = tmp->AddCommand(wxT("Threading"), CMD_ERR_NOTSUPPORTED,
+		wxTRANSLATE("Threading diagnostics (VerboseThreading/DrainTimeout)."), wxEmptyString, CMD_PARAM_NEVER);
+	tmp2->AddCommand(wxT("Verbose"), CMD_ID_SET_THREADING_VERBOSE,
+		wxTRANSLATE("Stub: VerboseThreading sólo puede cambiarse desde la GUI o editando preferences.ini."), wxEmptyString, CMD_PARAM_OPTIONAL);
+	tmp2->AddCommand(wxT("DrainTimeout"), CMD_ID_SET_THREADING_TIMEOUT,
+		wxTRANSLATE("Stub: el timeout de drenado debe cambiarse en la GUI/INI local. Revisa docs/debug/threading.md."), wxEmptyString, CMD_PARAM_OPTIONAL);
 
 	tmp = m_commands.AddCommand(wxT("Get"), CMD_ERR_INCOMPLETE, wxTRANSLATE("Get and display a preference value."),
 				    wxEmptyString, CMD_PARAM_NEVER);
@@ -951,6 +967,11 @@ void CamulecmdApp::OnInitCommandSet()
 	tmp2->AddCommand(wxT("Level"), CMD_ID_GET_IPFILTER_LEVEL, wxTRANSLATE("Get IP filtering level."), wxEmptyString, CMD_PARAM_NEVER);
 
 	tmp->AddCommand(wxT("BwLimits"), CMD_ID_GET_BWLIMITS, wxTRANSLATE("Get bandwidth limits."), wxEmptyString, CMD_PARAM_NEVER);
+
+	tmp2 = tmp->AddCommand(wxT("Threading"), CMD_ERR_NOTSUPPORTED,
+		wxTRANSLATE("Mostrar preferencias de threading."), wxEmptyString, CMD_PARAM_NEVER);
+	tmp2->AddCommand(wxT("Verbose"), CMD_ID_GET_THREADING_VERBOSE,
+		wxTRANSLATE("Stub: usa la GUI o el script manual-tests/threading/VerboseThreading.ps1 para verificar el estado."), wxEmptyString, CMD_PARAM_NEVER);
 
 	tmp = m_commands.AddCommand(wxT("Search"), CMD_ID_SEARCH, wxTRANSLATE("Execute a search."),
 			      wxTRANSLATE("A search type has to be specified by giving the type:\n    GLOBAL\n    LOCAL\n    KAD\nExample: 'search kad file' will execute a kad search for \"file\".\n"), CMD_PARAM_ALWAYS);

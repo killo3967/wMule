@@ -32,6 +32,7 @@
 #include <deque>
 
 #include "Types.h"
+#include <common/threading/ThreadGuards.h>
 
 class ThrottledControlSocket;
 class ThrottledFileSocket;
@@ -55,6 +56,7 @@ public:
     void EndThread();
 
     void SignalActivity();
+	Threading::DrainResult Drain(std::chrono::milliseconds timeout);
 private:
     void DoRemoveFromAllQueues(ThrottledControlSocket* socket);
     bool RemoveFromStandardListNoLock(ThrottledFileSocket* socket);
@@ -66,8 +68,8 @@ private:
     bool m_doRun;
 
 
-    wxMutex m_sendLocker;
-    wxMutex m_tempQueueLocker;
+    mutable wxMutex m_sendLocker;
+    mutable wxMutex m_tempQueueLocker;
 
 	typedef std::deque<ThrottledControlSocket*> SocketQueue;
 
@@ -90,6 +92,9 @@ private:
 
     mutable wxMutex m_runMutex;
     wxCondition m_runCond;
+
+	bool HasPendingWork() const;
+	void NotifyDrained();
 };
 
 

@@ -2083,18 +2083,34 @@ wxSizer *PreferencesWmuleTweaksTab( wxWindow *parent, bool call_fit, bool set_si
     wxStaticText *item12 = new wxStaticText( parent, IDC_SERVERKEEPALIVE_LABEL, _("Server connection refresh interval: Disable"), wxDefaultPosition, wxDefaultSize, 0 );
     item4->Add( item12, 0, wxALIGN_CENTER_VERTICAL|wxTOP, 5 );
 
-    wxSlider *item13 = new wxSlider( parent, IDC_SERVERKEEPALIVE, 0, 0, 30, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
-    item4->Add( item13, 0, wxGROW|wxALIGN_CENTER_VERTICAL, 5 );
+	wxSlider *item13 = new wxSlider( parent, IDC_SERVERKEEPALIVE, 0, 0, 30, wxDefaultPosition, wxSize(100,-1), wxSL_HORIZONTAL );
+	item4->Add( item13, 0, wxGROW|wxALIGN_CENTER_VERTICAL, 5 );
 
-    wxCheckBox *item14 = new wxCheckBox( parent, IDC_PREVENT_SLEEP, _("Disable computer's timed standby mode"), wxDefaultPosition, wxDefaultSize, 0 );
-    item4->Add( item14, 0, wxALIGN_CENTER_VERTICAL|wxTOP|wxBOTTOM, 5 );
+	wxCheckBox *item14 = new wxCheckBox( parent, IDC_PREVENT_SLEEP, _("Disable computer's timed standby mode"), wxDefaultPosition, wxDefaultSize, 0 );
+	item4->Add( item14, 0, wxALIGN_CENTER_VERTICAL|wxTOP|wxBOTTOM, 5 );
 
-    item0->Add( item4, 0, wxGROW|wxALL, 5 );
+	item0->Add( item4, 0, wxGROW|wxALL, 5 );
 
-    if (set_sizer)
-    {
-        parent->SetSizer( item0 );
-        if (call_fit)
+	wxStaticBox *item16 = new wxStaticBox( parent, -1, _("Threading diagnostics") );
+	wxStaticBoxSizer *item15 = new wxStaticBoxSizer( item16, wxVERTICAL );
+
+	wxCheckBox *item17 = new wxCheckBox( parent, IDC_VERBOSE_THREADING, _("Enable verbose threading logging when DBG_THREAD is active"), wxDefaultPosition, wxDefaultSize, 0 );
+	item15->Add( item17, 0, wxALIGN_CENTER_VERTICAL|wxTOP|wxBOTTOM, 5 );
+
+	wxFlexGridSizer *item18 = new wxFlexGridSizer( 2, 0, 0 );
+	item18->AddGrowableCol( 1 );
+	wxStaticText *item19 = new wxStaticText( parent, -1, _("Thread drain timeout (ms)"), wxDefaultPosition, wxDefaultSize, 0 );
+	item18->Add( item19, 0, wxALIGN_CENTER_VERTICAL|wxRIGHT, 5 );
+	wxSpinCtrl *item20 = new wxSpinCtrl( parent, IDC_THREAD_DRAIN_TIMEOUT, wxT("5000"), wxDefaultPosition, wxSize(100,-1), 0, 1000, 600000, 5000 );
+	item18->Add( item20, 0, wxALIGN_CENTER_VERTICAL, 5 );
+	item15->Add( item18, 0, wxGROW|wxALIGN_CENTER_VERTICAL|wxBOTTOM, 5 );
+
+	item0->Add( item15, 0, wxGROW|wxLEFT|wxRIGHT, 5 );
+
+	if (set_sizer)
+	{
+		parent->SetSizer( item0 );
+		if (call_fit)
             item0->SetSizeHints( parent );
     }
     

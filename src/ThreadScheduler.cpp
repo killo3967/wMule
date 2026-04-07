@@ -26,6 +26,7 @@
 #include "Logger.h"				// Needed for Add(Debug)LogLine{C,N}
 #include <common/Format.h>		// Needed for CFormat
 #include <common/ThreadPool.h>	// Needed for parallel task execution
+#include <common/threading/ThreadGuards.h>
 #include "ScopedPtr.h"			// Needed for CScopedPtr
 
 #include <algorithm>			// Needed for std::sort		// Do_not_auto_remove (mingw-gcc-3.4.5)
@@ -108,6 +109,11 @@ void CThreadScheduler::Terminate()
 
 bool CThreadScheduler::AddTask(CThreadTask* task, bool overwrite)
 {
+	if (!Threading::ShutdownToken().GuardEnqueueOrErr("CThreadScheduler::AddTask")) {
+		delete task;
+		return false;
+	}
+
 	wxMutexLocker lock(s_lock);
 
 	// When terminated (on shutdown), all tasks are ignored.
@@ -272,7 +278,8 @@ void* CThreadScheduler::Entry()
 
 	CThreadPool& pool = CThreadPool::Instance();
 
-	while (true) {
+ 	while (true) {
+		Threading::ScopedThreadOwner owner(Threading::ThreadOwnerTag::Scheduler);
 		CThreadTask* rawTask = nullptr;
 
 		{
@@ -349,7 +356,7 @@ void* CThreadScheduler::Entry()
 			}
 
 			delete rawTask;
-		});
+		}, true);
 	}
 
 	// Wait for all active tasks to complete before exiting
@@ -416,3 +423,41 @@ ETaskPriority CThreadTask::GetPriority() const
 
 
 // File_checked_for_headers
+Threading::DrainResult CThreadScheduler::Drain(std::chrono::milliseconds timeout)
+{
+	wxMutexLocker lock(s_lock);
+	if (!s_scheduler) {
+		return Threading::DrainResult::Completed;
+	}
+
+	const auto start = std::chrono::steady_clock::now();
+	Threading::DrainResult result = Threading::DrainResult::Completed;
+	const auto hasWork = []() {
+		return (s_scheduler != nullptr) && (!s_scheduler->m_tasks.empty() || s_scheduler->m_activeTasks > 0);
+	};
+
+	while (hasWork()) {
+		if (timeout.count() <= 0) {
+			s_taskEvent.Wait();
+		} else {
+			const auto now = std::chrono::steady_clock::now();
+			const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start);
+			if (elapsed >= timeout) {
+				result = Threading::DrainResult::TimedOut;
+				break;
+			}
+			const auto remaining = timeout - elapsed;
+			const wxCondError waitResult = s_taskEvent.WaitTimeout(static_cast<long>(std::max<std::chrono::milliseconds>(remaining, std::chrono::milliseconds(10)).count()));
+			if (waitResult == wxCOND_TIMEOUT && hasWork()) {
+				result = Threading::DrainResult::TimedOut;
+				break;
+			}
+		}
+	}
+
+	Threading::ThreadMetrics::Instance().RegisterDrainResult(result);
+	if (result == Threading::DrainResult::TimedOut) {
+		AddDebugLogLineC(logThreads, wxT("ThreadScheduler drain timed out"));
+	}
+	return result;
+}

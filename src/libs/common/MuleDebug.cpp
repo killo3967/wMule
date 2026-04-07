@@ -24,10 +24,12 @@
 //
 
 #include <cstdlib>			// Needed for std::abort()
+#include <cstdio>			// Needed for stderr / fprintf()
 
 #include "config.h"			// Needed for HAVE_CXXABI and HAVE_EXECINFO
 
 #include "MuleDebug.h"			// Interface declaration
+#include "../../Logger.h"
 #include "StringFunctions.h"		// Needed for unicode2char
 #include "Format.h"			// Needed for CFormat
 
@@ -72,11 +74,10 @@ void OnUnhandledException()
 
 #ifdef HAVE_CXXABI
 	std::type_info *t = __cxxabiv1::__cxa_current_exception_type();
-	FILE* output = stderr;
 #else
-	FILE* output = stdout;
 	bool t = true;
 #endif
+	wxString crashReport = wxT("\nUnhandled exception caused wMule to terminate.\n");
 	if (t) {
 		int status = -1;
 		char *dem = 0;
@@ -88,23 +89,31 @@ void OnUnhandledException()
 #else
 		const char* name = "Unknown";
 #endif
-		fprintf(output, "\nTerminated after throwing an instance of '%s'\n", (status ? name : dem));
+		crashReport << wxT("\nTerminated after throwing an instance of '")
+			<< (status ? name : dem) << wxT("'\n");
 		free(dem);
 
 		try {
 			throw;
 		} catch (const std::exception& e) {
-			fprintf(output, "\twhat(): %s\n", e.what());
+			crashReport << wxT("\twhat(): ") << e.what() << wxT("\n");
 		} catch (const CMuleException& e) {
-			fprintf(output, "\twhat(): %s\n", (const char*)unicode2char(e.what()));
+			crashReport << wxT("\twhat(): ") << e.what() << wxT("\n");
 		} catch (const wxString& e) {
-			fprintf(output, "\twhat(): %s\n", (const char*)unicode2char(e));
+			crashReport << wxT("\twhat(): ") << e << wxT("\n");
 		} catch (...) {
 			// Unable to retrieve cause of exception
 		}
 
-		fprintf(output, "\tbacktrace:\n%s\n", (const char*)unicode2char(get_backtrace(1)));
+		crashReport << wxT("\tbacktrace:\n") << get_backtrace(1) << wxT("\n");
+	} else {
+		crashReport << wxT("No current exception information is available.\n");
 	}
+
+	#ifndef MULEUNIT
+		fprintf(stderr, "%s", (const char*)unicode2char(crashReport));
+		fflush(stderr);
+	#endif
 	std::abort();
 }
 

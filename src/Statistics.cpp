@@ -26,6 +26,8 @@
 
 #include "Statistics.h"		// Interface declarations
 
+#include <atomic>
+
 #include <protocol/ed2k/ClientSoftware.h>
 
 #include <ec/cpp/ECTag.h>		// Needed for CECTag
@@ -143,6 +145,12 @@ CPreciseRateCounter*		CStatistics::s_downOverheadRate;
 CStatTreeItemRateCounter*	CStatistics::s_uploadrate;
 CStatTreeItemRateCounter*	CStatistics::s_downloadrate;
 
+std::atomic<uint64_t>	CStatistics::s_atomicSessionUploaded;
+std::atomic<uint64_t>	CStatistics::s_atomicSessionDownloaded;
+std::atomic<uint64_t>	CStatistics::s_atomicActiveUploads;
+std::atomic<uint64_t>	CStatistics::s_atomicWaitingUploads;
+std::atomic<uint64_t>	CStatistics::s_atomicActiveDownloads;
+
 #else /* CLIENT_GUI */
 
 uint64	CStatistics::s_start_time;
@@ -233,6 +241,11 @@ CStatistics::CStatistics()
 	  m_graphRunningAvgUp(thePrefs::GetStatsAverageMinutes() * 60 * 1000, true),
 	  m_graphRunningAvgKad(thePrefs::GetStatsAverageMinutes() * 60 * 1000, true)
 {
+	s_atomicSessionUploaded = 0;
+	s_atomicSessionDownloaded = 0;
+	s_atomicActiveUploads = 0;
+	s_atomicWaitingUploads = 0;
+	s_atomicActiveDownloads = 0;
 	uint64 start_time = GetTickCount64();
 
 	// Init graphs
@@ -357,6 +370,57 @@ void CStatistics::Save()
 		}
 		s_statsNeedSave = false;
 	}
+}
+
+ThreadingStatsSnapshot CStatistics::GetThreadingStatsSnapshot()
+{
+	ThreadingStatsSnapshot snapshot;
+	snapshot.sessionUploadedBytes = s_atomicSessionUploaded.load(std::memory_order_relaxed);
+	snapshot.sessionDownloadedBytes = s_atomicSessionDownloaded.load(std::memory_order_relaxed);
+	snapshot.activeUploads = static_cast<uint32>(s_atomicActiveUploads.load(std::memory_order_relaxed));
+	snapshot.waitingUploads = static_cast<uint32>(s_atomicWaitingUploads.load(std::memory_order_relaxed));
+	snapshot.activeDownloads = static_cast<uint32>(s_atomicActiveDownloads.load(std::memory_order_relaxed));
+	return snapshot;
+}
+
+void CStatistics::IncrementActiveUploadsAtomic()
+{
+	s_atomicActiveUploads.fetch_add(1, std::memory_order_relaxed);
+}
+
+void CStatistics::DecrementActiveUploadsAtomic()
+{
+	s_atomicActiveUploads.fetch_sub(1, std::memory_order_relaxed);
+}
+
+void CStatistics::IncrementWaitingUploadsAtomic()
+{
+	s_atomicWaitingUploads.fetch_add(1, std::memory_order_relaxed);
+}
+
+void CStatistics::DecrementWaitingUploadsAtomic()
+{
+	s_atomicWaitingUploads.fetch_sub(1, std::memory_order_relaxed);
+}
+
+void CStatistics::IncrementActiveDownloadsAtomic()
+{
+	s_atomicActiveDownloads.fetch_add(1, std::memory_order_relaxed);
+}
+
+void CStatistics::DecrementActiveDownloadsAtomic()
+{
+	s_atomicActiveDownloads.fetch_sub(1, std::memory_order_relaxed);
+}
+
+void CStatistics::IncrementSessionUploaded(uint32 bytes)
+{
+	s_atomicSessionUploaded.fetch_add(static_cast<uint64_t>(bytes), std::memory_order_relaxed);
+}
+
+void CStatistics::IncrementSessionDownloaded(uint32 bytes)
+{
+	s_atomicSessionDownloaded.fetch_add(static_cast<uint64_t>(bytes), std::memory_order_relaxed);
 }
 
 void CStatistics::CalculateRates()

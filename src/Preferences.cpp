@@ -213,6 +213,8 @@ uint32		CPreferences::s_uMinFreeDiskSpace;
 wxString	CPreferences::s_yourHostname;
 bool		CPreferences::s_bVerbose;
 bool		CPreferences::s_bVerboseLogfile;
+bool		CPreferences::s_verboseThreading;
+uint32	CPreferences::s_threadDrainTimeoutMs;
 bool		CPreferences::s_bmanualhighprio;
 bool		CPreferences::s_bstartnextfile;
 bool		CPreferences::s_bstartnextfilesame;
@@ -518,7 +520,7 @@ public:
 			m_real_path = CPath(result.m_normalizedPath);
 			m_temp_path = result.m_normalizedPath;
 			if (result.m_isExternalToBase) {
-				AddLogLineCS(CFormat(wxT("Accepted external %s '%s' (validated).")) % GetKey() % result.m_normalizedPath);
+				AddLogLineCS(CFormat(wxT("WARNING: Accepted external %s '%s' (validated).")) % GetKey() % result.m_normalizedPath);
 			}
 			return;
 		}
@@ -526,7 +528,7 @@ public:
 		wxString fallback = GetDefaultInternalPath(kind, context);
 		CInternalPathResult fallbackResult = NormalizeInternalDir(kind, fallback, context);
 		if (fallbackResult.m_ok) {
-		AddLogLineCS(CFormat(wxT("Rejected %s from config '%s' (%s); using '%s'"))
+		AddLogLineCS(CFormat(wxT("WARNING: Rejected %s from config '%s' (%s); using '%s'"))
 			% GetKey() % m_temp_path % InternalPathErrorToString(result.m_error) % fallbackResult.m_normalizedPath);
 			m_real_path = CPath(fallbackResult.m_normalizedPath);
 			m_temp_path = fallbackResult.m_normalizedPath;
@@ -1164,8 +1166,8 @@ bool CPreferences::BootstrapLoggingConfig(wxConfigBase* cfg, wxString* warning)
 				? wxString(wxT("<unset>"))
 				: s_effectiveLogFilePath;
 			*warning = failureReason.IsEmpty()
-				? CFormat(wxT("logfile path invalid; using default: %s")) % effectivePath
-				: CFormat(wxT("logfile path invalid (%s); using default: %s")) % failureReason % effectivePath;
+				? CFormat(wxT("WARNING: logfile path invalid; using default: %s")) % effectivePath
+				: CFormat(wxT("WARNING: logfile path invalid (%s); using default: %s")) % failureReason % effectivePath;
 		}
 	} else if (warning) {
 		warning->Clear();
@@ -1231,6 +1233,7 @@ void CPreferences::BuildItemList( const wxString& appdir )
 	int current_id = 0;
 	#define NewCfgItem(ID, COMMAND)	s_CfgList[++current_id] = COMMAND
 #endif /* AMULE_DAEMON */
+
 
 	/**
 	 * User settings
@@ -1486,6 +1489,8 @@ void CPreferences::BuildItemList( const wxString& appdir )
 	 * Power management
 	 **/
 	NewCfgItem( IDC_PREVENT_SLEEP, ( new Cfg_Bool( wxT("/PowerManagement/PreventSleepWhileDownloading"), s_preventSleepWhileDownloading, false )));
+	NewCfgItem( IDC_VERBOSE_THREADING, ( new Cfg_Bool( wxT("/Threading/VerboseThreading"), s_verboseThreading, false )));
+	NewCfgItem( IDC_THREAD_DRAIN_TIMEOUT, ( MkCfg_Int( wxT("/Threading/DrainTimeoutMs"), s_threadDrainTimeoutMs, 5000 ) ));
 
 	/**
 	 * The following doesn't have an associated widget or section
@@ -1913,6 +1918,12 @@ void CPreferences::SetMaxDownload(uint16 in)
 		// Ensure that the ratio is upheld
 		CheckUlDlRatio();
 	}
+}
+
+
+void CPreferences::SetThreadDrainTimeoutMs(uint32 val)
+{
+	s_threadDrainTimeoutMs = std::clamp(val, THREAD_DRAIN_TIMEOUT_MIN_MS, THREAD_DRAIN_TIMEOUT_MAX_MS);
 }
 
 

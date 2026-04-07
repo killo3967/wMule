@@ -282,6 +282,8 @@ wxSizer *PreferencesStatisticsTab( wxWindow *parent, bool call_fit = true, bool 
 #define IDC_SERVERKEEPALIVE_LABEL 10196
 #define IDC_SERVERKEEPALIVE 10197
 #define IDC_PREVENT_SLEEP 10198
+#define IDC_VERBOSE_THREADING 11000
+#define IDC_THREAD_DRAIN_TIMEOUT 11001
 wxSizer *PreferencesWmuleTweaksTab( wxWindow *parent, bool call_fit = true, bool set_sizer = true );
 
 #define IDC_SKIN 10199

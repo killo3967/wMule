@@ -100,6 +100,8 @@ enum DebugType
 	logMuleUDP,
 	//! Warnings/Errors related to the thread-scheduler.
 	logThreads,
+	//! Warnings/Errors related to threading metrics and shutdown.
+	logThreading,
 	//! Warnings/Errors related to the Universal Plug and Play subsystem.
 	logUPnP,
 	//! Warnings/Errors related to the UDP Firewall Tester
@@ -308,7 +310,7 @@ private:
 	/**
 	 * Really output several lines
 	 */
-	void DoLines(const wxString & lines, bool critical, bool toStdout, bool toGUI);
+	void DoLines(const wxString & lines, bool critical, bool toStdout, bool toGUI, const wxString& level, const wxString& category, const wxString& origin);
 
 	DECLARE_EVENT_TABLE()
 };
@@ -337,18 +339,33 @@ DECLARE_LOCAL_EVENT_TYPE(MULE_EVT_LOGLINE, -1)
 class CLoggingEvent : public wxEvent
 {
 public:
-	CLoggingEvent(bool critical, bool toStdout, bool toGUI, const wxString& msg)
+	CLoggingEvent(bool critical, bool toStdout, bool toGUI, const wxString& msg, const wxString& level, const wxString& category, const wxString& origin)
 		: wxEvent(-1, MULE_EVT_LOGLINE)
 		, m_critical(critical)
 		, m_stdout(toStdout)
 		, m_GUI(toGUI)
 		// Deep copy, to avoid thread-unsafe reference counting. */
 		, m_msg(msg.c_str(), msg.Length())
+		, m_level(level)
+		, m_category(category)
+		, m_origin(origin)
 	{
 	}
 
 	const wxString& Message() const {
 		return m_msg;
+	}
+
+	const wxString& Level() const {
+		return m_level;
+	}
+
+	const wxString& Category() const {
+		return m_category;
+	}
+
+	const wxString& Origin() const {
+		return m_origin;
 	}
 
 	bool IsCritical() const {
@@ -364,7 +381,7 @@ public:
 	}
 
 	wxEvent* Clone() const {
-		return new CLoggingEvent(m_critical, m_stdout, m_GUI, m_msg);
+		return new CLoggingEvent(m_critical, m_stdout, m_GUI, m_msg, m_level, m_category, m_origin);
 	}
 
 private:
@@ -372,6 +389,9 @@ private:
 	bool		m_stdout;
 	bool		m_GUI;
 	wxString	m_msg;
+	wxString	m_level;
+	wxString	m_category;
+	wxString	m_origin;
 };
 
 

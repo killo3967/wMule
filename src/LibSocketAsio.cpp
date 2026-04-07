@@ -291,7 +291,7 @@ public:
 	void Destroy()
 	{
 		if (m_isDestroying) {
-			AddDebugLogLineC(logAsio, CFormat(wxT("Destroy() already dying socket %p %p %s")) % m_libSocket % this % m_IP);
+			AddDebugLogLineN(logAsio, CFormat(wxT("Destroy() already dying socket %p %p %s")) % m_libSocket % this % m_IP);
 			return;
 		}
 		m_isDestroying = true;

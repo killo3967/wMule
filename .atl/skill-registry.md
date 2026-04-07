@@ -1,17 +1,18 @@
 # Skill Registry
 
-Regenerado por `sdd-init` el 2026-04-01 (modo engram) para el proyecto `wMule`.
+Regenerado por `sdd-init` el 2026-04-05 (modo engram) para el proyecto `wMule`.
 
 ## Fuentes escaneadas
 
 ### Directorios de skills
-- Usuario: `C:\Users\tomas\.config\opencode\skills\` (excluidos `sdd-*`, `_shared`, `skill-registry`)
+- Usuario: `C:\Users\tomas\.claude\skills\` (excluidos `sdd-*`, `_shared`, `skill-registry`)
 - Usuario: `C:\Users\tomas\.agents\skills\`
-- Usuario: no encontrados `C:\Users\tomas\.claude\skills\`, `C:\Users\tomas\.gemini\skills\`, `C:\Users\tomas\.cursor\skills\`, `C:\Users\tomas\.copilot\skills\`
+- Usuario: `C:\Users\tomas\.config\opencode\skills\` (excluidos `sdd-*`, `_shared`, `skill-registry`)
+- Usuario: no encontrados `C:\Users\tomas\.gemini\skills\`, `C:\Users\tomas\.cursor\skills\`, `C:\Users\tomas\.copilot\skills\`
 - Proyecto: no hay skills en `.claude/skills/`, `.gemini/skills/`, `.agent/skills/`, `skills/`
 
 ### Ficheros de convención del proyecto
-- `AGENTS.md` (instrucciones primarias; referencia `docs/PLAN_MODERNIZACION_2.0.md`, `docs/blueprint.md`, `docs/BUILD_MEMORY.md`)
+- `AGENTS.md` (reglas primarias; referencia `docs/PLAN_MODERNIZACION_2.0.md`, `docs/blueprint.md`, `docs/BUILD_MEMORY.md`)
 - `docs/PLAN_MODERNIZACION_2.0.md`
 - `docs/blueprint.md`
 - `docs/BUILD_MEMORY.md`
@@ -26,7 +27,7 @@ Regenerado por `sdd-init` el 2026-04-01 (modo engram) para el proyecto `wMule`.
 - Testing: MuleUnit ejecutable registrado en CTest.
 
 ### Arquitectura y estructura
-- Monolito modular en transición; `docs/blueprint.md` es objetivo, `docs/PLAN_MODERNIZACION_2.0.md` la hoja de ruta real (Fase 2 prioritaria).
+- Monolito modular en transición; `docs/blueprint.md` es objetivo aspiracional, `docs/PLAN_MODERNIZACION_2.0.md` la hoja de ruta real (Fase 2 prioritaria).
 - Core en `CamuleApp` (`src/amule.cpp`) con globals `theApp` y `thePrefs`; entrypoints `wmule.exe` y `wmulecmd.exe`.
 - Carpetas clave: `src/`, `src/libs/common/`, `src/libs/ec/`, `src/kademlia/`, `unittests/tests/`, `docs/`, `cmake/`.
 - Pedir cambios vía seams concretos, extracción incremental, reducción de acoplamiento y compatibilidad de protocolo.
@@ -35,7 +36,7 @@ Regenerado por `sdd-init` el 2026-04-01 (modo engram) para el proyecto `wMule`.
 - Bloque GPL e include guards en `.cpp/.h`; orden de includes: header propio → proyecto → librerías → estándar.
 - Naming: clases `C*`, miembros `m_*`, funciones `CamelCase`, locales `camelCase`.
 - Preferir C++ moderno (`true/false`, `nullptr`, `using`, `static_assert`, RAII, STL); tabs (~100 chars); `wxT("...")` donde aplique.
-- Evitar expandir dependencias wxWidgets en código reutilizable; favorecer helpers puros (`Path`, `UPnPUrlUtils`, guards Kad/UDP).
+- Evitar expandir dependencias wxWidgets en código reutilizable; favorecer helpers puros (`Path`, `UPnPUrlUtils`, guards Kad/UDP`).
 
 ### Reglas de seguridad
 - No editar generados: `build/config.h`, `build/version.rc`, `src/libs/ec/cpp/ECCodes.h`, `src/libs/ec/cpp/ECTagTypes.h`, `pixmaps/flags_xpm/CountryFlags.h`.
@@ -55,7 +56,7 @@ Regenerado por `sdd-init` el 2026-04-01 (modo engram) para el proyecto `wMule`.
 - Trabajar en ramas feature; separar seguridad riesgosa de refactors cosméticos.
 - Antes de PR: `cmake --build . --config Debug` y `ctest --output-on-failure -C Debug` en `build/`.
 - Actualizar `docs/PLAN_MODERNIZACION_2.0.md` si cambia el estado de fase.
-- Verificar afirmaciones (“dejame verificar” si duda); al preguntar, esperar respuesta.
+- Verificar afirmaciones (“dejame verificar” si hay duda); al preguntar, esperar respuesta.
 
 ### Guía de prompting
 - Pedir cambios: “extrae esta lógica de `CamuleApp` a un servicio testeable”, “encapsula esta infraestructura detrás de una API local”, “reduce dependencias a `thePrefs`”, “introduce un seam para testear sin GUI/socket real”.
@@ -65,39 +66,42 @@ Regenerado por `sdd-init` el 2026-04-01 (modo engram) para el proyecto `wMule`.
 
 | Skill | Source | Trigger / Cuándo usar |
 | --- | --- | --- |
-| api-patterns | user (.agents) | API design choices, versioning, pagination |
-| architecture-patterns | user (.agents) | Clean/Hexagonal/DDD architecture work |
-| async-python-patterns | user (.agents) | asyncio, concurrency, non-blocking Python |
-| brainstorming | user (.agents) | Before creative feature/design work |
-| branch-pr | user (.config/opencode) | Creating or preparing pull requests |
-| c4-context | user (.agents) | High-level system context documentation |
-| cmake | user (.agents) | CMakeLists, generators, toolchains, targets |
-| commit | user (.agents) | Conventional commit message drafting |
-| concise-planning | user (.agents) | Short actionable coding plans |
-| database-architect | user (.agents) | Data modeling and DB architecture decisions |
-| fastapi-pro | user (.agents) | FastAPI architecture and optimization |
-| fastapi-templates | user (.agents) | Bootstrapping FastAPI projects |
-| find-skills | user (.agents) | Discovering/installing skills |
-| frontend-design | user (.agents) | Frontend styling and UI craft |
-| git-master | user (.agents) | Strict git workflow and semantic commits |
-| go-testing | user (.config/opencode) | Go tests and Bubbletea TUI testing |
-| issue-creation | user (.config/opencode) | Creating GitHub issues |
-| judgment-day | user (.config/opencode) | Dual adversarial review workflow |
-| lint-and-validate | user (.agents) | Lint, format, static analysis, validation |
-| media-toolkit | user (.agents) | FFmpeg/media processing work |
-| nodriver-expert | user (.agents) | Robust async browser automation on Windows |
-| prompt-engineering | user (.agents) | Improving prompts and agent behavior |
-| python-patterns | user (.agents) | Python structure and framework choices |
-| python-pro | user (.agents) | Advanced Python implementation work |
-| python-testing-patterns | user (.agents) | Pytest and Python test strategy |
-| security-auditor | user (.agents) | Security reviews and threat analysis |
-| skill-creator | user (.config/opencode) | Creating new agent skills |
-| sql-pro | user (.agents) | SQL optimization and advanced queries |
-| sqlmodel-async-expert | user (.agents) | Async SQLModel / SQLAlchemy integration |
-| systematic-debugging | user (.agents) | Bug investigation before fixes |
-| ui-ux-designer | user (.agents) | UX, flows, design systems |
-| web-scraping | user (.agents) | Web extraction and anti-blocking patterns |
-| writing-plans | user (.agents) | Multi-step implementation planning from specs |
+| api-patterns | user (.agents) | Diseño de APIs, versiones y paginación |
+| architecture-patterns | user (.agents) | Patrones backend tipo Clean/Hex/DDD |
+| async-python-patterns | user (.agents) | Trabajos Python asyncio y concurrencia |
+| brainstorming | user (.agents) | Antes de trabajos creativos o de diseño |
+| branch-pr | user (.config/opencode) | Crear o preparar pull requests ATL |
+| c4-context | user (.agents) | Documentar contexto C4 y dependencias |
+| cmake | user (.agents) | Ajustar CMakeLists, toolchains y presets |
+| commit | user (.agents) | Redactar commits convencionales estilo Sentry |
+| concise-planning | user (.agents) | Generar checklists atómicas antes de codificar |
+| cpp-coding-standards | user (.agents) | Aplicar normas modernas C++ / Core Guidelines |
+| cpp-pro | user (.agents) | Optimizaciones C++20/23, memoria y plantillas |
+| cpp-testing | user (.agents) | Añadir/fijar tests C++ (GoogleTest/CTest) |
+| database-architect | user (.agents) | Modelado de datos y selección de motores |
+| fastapi-pro | user (.agents) | Arquitectura y optimización FastAPI |
+| fastapi-templates | user (.agents) | Bootstrap completo de proyectos FastAPI |
+| find-skills | user (.agents) | Descubrir/instalar nuevas skills disponibles |
+| frontend-design | user (.agents) | Diseñar/stilar UIs con alto craft visual |
+| git-master | user (.agents) | Flujos Git exigentes y estrategias de ramas |
+| go-testing | user (.config/opencode) | Testing Go + Bubbletea/teatest |
+| issue-creation | user (.config/opencode) | Abrir issues GitHub siguiendo ATL |
+| judgment-day | user (.config/opencode) | Revisiones duales adversariales |
+| lint-and-validate | user (.agents) | Ejecutar linters, formatters y validadores |
+| media-toolkit | user (.agents) | Procesar audio/video (FFmpeg, MKVToolNix) |
+| nodriver-expert | user (.agents) | Automatización nodriver robusta en Windows |
+| prompt-engineering | user (.agents) | Mejorar prompts y comportamiento de agentes |
+| python-patterns | user (.agents) | Estructura y convenciones de proyectos Python |
+| python-pro | user (.agents) | Implementaciones avanzadas/performantes en Python |
+| python-testing-patterns | user (.agents) | Estrategias Pytest, fixtures y TDD |
+| security-auditor | user (.agents) | Escaneos OWASP y endurecimiento de superficies |
+| skill-creator | user (.config/opencode) | Crear nuevas skills siguiendo la spec ATL |
+| sql-pro | user (.agents) | SQL avanzado, tuning y análisis híbrido |
+| sqlmodel-async-expert | user (.agents) | SQLModel/SQLAlchemy async, MissingGreenlet |
+| systematic-debugging | user (.agents) | Diagnóstico sistemático antes de corregir bugs |
+| ui-ux-designer | user (.agents) | Experiencia de usuario, flows y design systems |
+| web-scraping | user (.agents) | Extracción web con anti-bloqueos |
+| writing-plans | user (.agents) | Planificar implementación multi-paso desde specs |
 
 ## Notas
 - Se excluyen deliberadamente skills `sdd-*`, `_shared` y `skill-registry` de la tabla.

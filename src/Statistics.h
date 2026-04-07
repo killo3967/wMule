@@ -30,6 +30,7 @@
 #include "Constants.h"		// Needed for StatsGraphType
 #include "StatTree.h"		// Needed for CStatTreeItem* classes
 
+#include <atomic>
 #include <deque>		// Needed for std::deque
 
 typedef struct UpdateInfo {
@@ -52,6 +53,14 @@ typedef struct HistoryRecord {
 	uint16		kadNodesCur;
 	uint64		kadNodesTotal;
 } HR;
+
+struct ThreadingStatsSnapshot {
+	uint64	 sessionUploadedBytes = 0;
+	uint64	 sessionDownloadedBytes = 0;
+	uint32	 activeUploads = 0;
+	uint32	 waitingUploads = 0;
+	uint32	 activeDownloads = 0;
+};
 
 
 #ifndef CLIENT_GUI
@@ -253,11 +262,11 @@ class CStatistics {
 	static	void	AddSuccessfulUpload()			{ ++(*s_totalSuccUploads); }
 	static	void	AddFailedUpload()			{ ++(*s_totalFailedUploads); }
 	static	void	AddUploadTime(uint32 time)		{ (*s_totalUploadTime) += time; }
-	static	void	AddUploadingClient()			{ ++(*s_activeUploads); }
-	static	void	RemoveUploadingClient()			{ --(*s_activeUploads); }
+	static	void	AddUploadingClient()			{ ++(*s_activeUploads); IncrementActiveUploadsAtomic(); }
+	static	void	RemoveUploadingClient()			{ --(*s_activeUploads); DecrementActiveUploadsAtomic(); }
 	static	uint32	GetActiveUploadsCount()			{ return (*s_activeUploads); }
-	static	void	AddWaitingClient()			{ ++(*s_waitingUploads); }
-	static	void	RemoveWaitingClient()			{ --(*s_waitingUploads); }
+	static	void	AddWaitingClient()			{ ++(*s_waitingUploads); IncrementWaitingUploadsAtomic(); }
+	static	void	RemoveWaitingClient()			{ --(*s_waitingUploads); DecrementWaitingUploadsAtomic(); }
 	static	uint32	GetWaitingUserCount()			{ return (*s_waitingUploads); }
 	static	double	GetUploadRate()				{ return s_uploadrate->GetRate(); }
 
@@ -276,10 +285,12 @@ class CStatistics {
 	static	uint32	GetFoundSources()			{ return (*s_foundSources); }
 	static	void	AddSourceOrigin(unsigned origin);
 	static	void	RemoveSourceOrigin(unsigned origin);
-	static	void	AddDownloadingSource()			{ ++(*s_activeDownloads); }
-	static	void	RemoveDownloadingSource()		{ --(*s_activeDownloads); }
+	static	void	AddDownloadingSource()			{ ++(*s_activeDownloads); IncrementActiveDownloadsAtomic(); }
+	static	void	RemoveDownloadingSource()		{ --(*s_activeDownloads); DecrementActiveDownloadsAtomic(); }
 	static	uint32	GetDownloadingSources()			{ return (*s_activeDownloads); }
 	static	double	GetDownloadRate()			{ return s_downloadrate->GetRate(); }
+
+	static	ThreadingStatsSnapshot GetThreadingStatsSnapshot();
 
 	// Connection
 	static	CStatTreeItemTimer* GetServerConnectTimer()	{ return s_sinceConnected; }
@@ -334,6 +345,7 @@ class CStatistics {
 			(*s_sessionDownload) += bytes;
 			(*s_downloadrate) += bytes;
 			s_totalReceived += bytes;
+			IncrementSessionDownloaded(bytes);
 			s_statsNeedSave = true;
 		}
 
@@ -346,6 +358,7 @@ class CStatistics {
 			(*s_sessionUpload) += bytes;
 			(*s_uploadrate) += bytes;
 			s_totalSent += bytes;
+			IncrementSessionUploaded(bytes);
 			s_statsNeedSave = true;
 		}
 
@@ -475,7 +488,22 @@ class CStatistics {
 	static	uint64_t	s_totalSent;
 	static	uint64_t	s_totalReceived;
 
+	static	std::atomic<uint64_t>	s_atomicSessionUploaded;
+	static	std::atomic<uint64_t>	s_atomicSessionDownloaded;
+	static	std::atomic<uint64_t>	s_atomicActiveUploads;
+	static	std::atomic<uint64_t>	s_atomicWaitingUploads;
+	static	std::atomic<uint64_t>	s_atomicActiveDownloads;
+
 	static	bool		s_statsNeedSave;
+
+	static	void	IncrementActiveUploadsAtomic();
+	static	void	DecrementActiveUploadsAtomic();
+	static	void	IncrementWaitingUploadsAtomic();
+	static	void	DecrementWaitingUploadsAtomic();
+	static	void	IncrementActiveDownloadsAtomic();
+	static	void	DecrementActiveDownloadsAtomic();
+	static	void	IncrementSessionUploaded(uint32 bytes);
+	static	void	IncrementSessionDownloaded(uint32 bytes);
 };
 
 #else /* CLIENT_GUI */

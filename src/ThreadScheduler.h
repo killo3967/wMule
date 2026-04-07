@@ -36,6 +36,9 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
+
+#include <common/threading/ThreadGuards.h>
 
 
 class CThreadTask;
@@ -96,6 +99,7 @@ public:
 	 * @see Terminate
 	 */
 	static bool AddTask(CThreadTask* task, bool overwrite = false);
+	static Threading::DrainResult Drain(std::chrono::milliseconds timeout);
 
 private:
 	CThreadScheduler();

@@ -117,6 +117,10 @@ uint64 UploadBandwidthThrottler::GetNumberOfSentBytesOverheadSinceLastCallAndRes
  */
 void UploadBandwidthThrottler::AddToStandardList(uint32 index, ThrottledFileSocket* socket)
 {
+	if (!Threading::ShutdownToken().GuardEnqueueOrErr("UploadBandwidthThrottler::AddToStandardList")) {
+		return;
+	}
+
 	if ( socket ) {
 		wxMutexLocker lock( m_sendLocker );
 
@@ -178,6 +182,10 @@ bool UploadBandwidthThrottler::RemoveFromStandardListNoLock(ThrottledFileSocket*
 */
 void UploadBandwidthThrottler::QueueForSendingControlPacket(ThrottledControlSocket* socket, bool hasSent)
 {
+	if (!Threading::ShutdownToken().GuardEnqueueOrErr("UploadBandwidthThrottler::QueueForSendingControlPacket")) {
+		return;
+	}
+
 	if (!IsRunning()) {
 		return;
 	}
@@ -284,6 +292,7 @@ void* UploadBandwidthThrottler::Entry()
 	uint32 extraSleepTime = TIME_BETWEEN_UPLOAD_LOOPS;
 
 	while (true) {
+		Threading::ScopedThreadOwner owner(Threading::ThreadOwnerTag::Throttler);
 		if (!IsRunning() || TestDestroy()) {
 			break;
 		}
@@ -291,11 +300,14 @@ void* UploadBandwidthThrottler::Entry()
 		uint32 timeSinceLastLoop = GetTickCountFullRes() - lastLoopTick;
 
 		// Calculate data rate
-		if (thePrefs::GetMaxUpload() == UNLIMITED) {
+		Threading::ThreadPrefsSnapshot prefs = Threading::CaptureThreadPrefs();
+		if (prefs.upLimit == UNLIMITED) {
 			// Try to increase the upload rate from UploadSpeedSense
 			allowedDataRate = (uint32)theStats::GetUploadRate() + 5 * 1024;
+		} else if (prefs.upLimit == 0) {
+			allowedDataRate = (uint32)theStats::GetUploadRate() + 5 * 1024;
 		} else {
-			allowedDataRate = thePrefs::GetMaxUpload() * 1024;
+			allowedDataRate = prefs.upLimit * 1024;
 		}
 
 		uint32 minFragSize = 1300;
@@ -455,6 +467,14 @@ void* UploadBandwidthThrottler::Entry()
 				extraSleepTime = TIME_BETWEEN_UPLOAD_LOOPS;
 			}
 		}
+
+		if (bytesToSpend < 0) {
+			Threading::ThreadMetrics::Instance().RegisterThrottlerDebt(static_cast<uint32>(-bytesToSpend));
+		} else {
+			Threading::ThreadMetrics::Instance().ResetThrottlerDebt();
+		}
+
+		NotifyDrained();
 	}
 
 	{
@@ -466,6 +486,7 @@ void* UploadBandwidthThrottler::Entry()
 	wxMutexLocker sendLock(m_sendLocker);
 	m_ControlQueue_list.clear();
 	m_StandardOrder_list.clear();
+	NotifyDrained();
 
 	return 0;
 }
@@ -482,6 +503,60 @@ void UploadBandwidthThrottler::SignalActivity()
 	wxMutexLocker lock(m_runMutex);
 	if (m_doRun) {
 		m_runCond.Signal();
+	}
+}
+
+Threading::DrainResult UploadBandwidthThrottler::Drain(std::chrono::milliseconds timeout)
+{
+	Threading::DrainResult result = Threading::DrainResult::Completed;
+	const auto start = std::chrono::steady_clock::now();
+	while (HasPendingWork()) {
+		wxMutexLocker lock(m_runMutex);
+		if (!m_doRun) {
+			break;
+		}
+		if (timeout.count() <= 0) {
+			m_runCond.Wait();
+		} else {
+			const auto now = std::chrono::steady_clock::now();
+			const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start);
+			if (elapsed >= timeout) {
+				result = Threading::DrainResult::TimedOut;
+				break;
+			}
+			const auto remaining = timeout - elapsed;
+			const wxCondError err = m_runCond.WaitTimeout(static_cast<unsigned long>(std::max<std::chrono::milliseconds>(remaining, std::chrono::milliseconds(10)).count()));
+			if (err == wxCOND_TIMEOUT && HasPendingWork()) {
+				result = Threading::DrainResult::TimedOut;
+				break;
+			}
+		}
+	}
+
+	if (result == Threading::DrainResult::Completed) {
+		Threading::ThreadMetrics::Instance().ResetThrottlerDebt();
+	}
+	Threading::ThreadMetrics::Instance().RegisterDrainResult(result);
+	return result;
+}
+
+bool UploadBandwidthThrottler::HasPendingWork() const
+{
+	{
+		wxMutexLocker lock(m_sendLocker);
+		if (!m_ControlQueue_list.empty() || !m_ControlQueueFirst_list.empty() || !m_StandardOrder_list.empty()) {
+			return true;
+		}
+	}
+	wxMutexLocker queueLock(m_tempQueueLocker);
+	return !m_TempControlQueue_list.empty() || !m_TempControlQueueFirst_list.empty();
+}
+
+void UploadBandwidthThrottler::NotifyDrained()
+{
+	if (!HasPendingWork()) {
+		wxMutexLocker lock(m_runMutex);
+		m_runCond.Broadcast();
 	}
 }
 // File_checked_for_headers

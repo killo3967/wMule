@@ -57,6 +57,7 @@
 #include "MagnetURI.h"		// Needed for CMagnetED2KConverter
 #include "ScopedPtr.h"		// Needed for CScopedPtr
 #include "PlatformSpecific.h"	// Needed for CanFSHandleLargeFiles
+#include <common/threading/ThreadGuards.h>
 
 #include "kademlia/kademlia/Kademlia.h"
 
@@ -239,6 +240,10 @@ void CDownloadQueue::AddSearchToDownload(CSearchFile* toadd, uint8 category)
 		return;
 	}
 
+	if (!Threading::ShutdownToken().GuardEnqueueOrErr("CDownloadQueue::AddSearchToDownload")) {
+		return;
+	}
+
 	if (toadd->GetFileSize() > OLD_MAX_FILE_SIZE) {
 		if (!PlatformSpecific::CanFSHandleLargeFiles(thePrefs::GetTempDir())) {
 			AddLogLineC(_("Filesystem for Temp directory cannot handle large files."));
@@ -352,6 +357,12 @@ void CDownloadQueue::StartNextFile(CPartFile* oldfile)
 
 void CDownloadQueue::AddDownload(CPartFile* file, bool paused, uint8 category)
 {
+	if (!Threading::ShutdownToken().GuardEnqueueOrErr("CDownloadQueue::AddDownload")) {
+		AddLogLineC(CFormat(_("Skipping download %s: shutting down")) % file->GetFileName());
+		delete file;
+		return;
+	}
+
 	wxCHECK_RET(!IsFileExisting(file->GetFileHash()), wxT("Adding duplicate part-file"));
 
 	if (file->GetStatus(true) == PS_ALLOCATING) {
@@ -361,6 +372,7 @@ void CDownloadQueue::AddDownload(CPartFile* file, bool paused, uint8 category)
 	}
 
 	{
+		Threading::ScopedQueueLock queueGuard(m_queueLock, Threading::ThreadOwnerTag::DownloadQueue);
 		wxMutexLocker lock(m_mutex);
 		m_filelist.push_back( file );
 		DoSortByPriority();
@@ -416,6 +428,7 @@ void CDownloadQueue::Process()
 	ProcessLocalRequests();
 
 	{
+		Threading::ScopedQueueLock queueGuard(m_queueLock, Threading::ThreadOwnerTag::DownloadQueue);
 		wxMutexLocker lock(m_mutex);
 
 		uint32 downspeed = 0;
@@ -762,6 +775,7 @@ void CDownloadQueue::CheckAndAddKnownSource(CPartFile* sender,CUpDownClient* sou
 
 bool CDownloadQueue::RemoveSource(CUpDownClient* toremove, bool	WXUNUSED(updatewindow), bool bDoStatsUpdate)
 {
+	Threading::ScopedQueueLock queueGuard(m_queueLock, Threading::ThreadOwnerTag::DownloadQueue);
 	bool removed = false;
 	toremove->DeleteAllFileRequests();
 

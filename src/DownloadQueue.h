@@ -32,6 +32,7 @@
 
 
 #include <deque>
+#include <mutex>
 
 
 class CSharedFileList;
@@ -348,6 +349,7 @@ private:
 
 	//! The mutex associated with this class, mutable to allow for const functions.
 	mutable wxMutex m_mutex;
+	mutable std::mutex m_queueLock;
 
 
 	uint32		m_datarate;

@@ -37,6 +37,86 @@ namespace {
 
 const wxChar* PERSISTENT_DEFAULT_SEPARATOR = wxT(";");
 
+wxString DetermineLogLevelLabel(bool critical, const wxString& message)
+{
+	const wxString fatalPrefix = _("FATAL: ");
+	if (message.StartsWith(fatalPrefix)) {
+		return wxT("FATAL");
+	}
+
+	const wxString criticalPrefix = _("CRITICAL: ");
+	if (message.StartsWith(criticalPrefix)) {
+		return wxT("CRITICAL");
+	}
+
+	const wxString warningPrefix = _("WARNING: ");
+	if (message.StartsWith(warningPrefix)) {
+		return wxT("WARNING");
+	}
+
+	const wxString errorPrefix = _("ERROR: ");
+	if (message.StartsWith(errorPrefix)) {
+		return wxT("ERROR");
+	}
+
+	return critical ? wxT("CRITICAL") : wxT("INFO");
+}
+
+wxString WrapLogColumn(const wxString& value)
+{
+	return wxT(" ") + value.Strip(wxString::both) + wxT(" ");
+}
+
+wxString DetermineModuleLabel(const wxString& category)
+{
+	const wxString cleanCategory = category.Strip(wxString::both);
+	return cleanCategory.IsEmpty() ? wxString(wxT("CORE")) : cleanCategory;
+}
+
+wxString StripKnownLogPrefix(const wxString& message)
+{
+	const wxString cleanMessage = message.Strip(wxString::both);
+	static const wxChar* const prefixes[] = {
+		wxT("FATAL: "),
+		wxT("CRITICAL: "),
+		wxT("ERROR: "),
+		wxT("WARNING: ")
+	};
+
+	for (const wxChar* prefix : prefixes) {
+		if (cleanMessage.StartsWith(prefix)) {
+			return cleanMessage.Mid(wxString(prefix).Length()).Strip(wxString::both);
+		}
+	}
+
+	return cleanMessage;
+}
+
+wxString ExtractFileLeaf(const wxString& file)
+{
+	if (file.IsEmpty()) {
+		return wxString();
+	}
+
+	wxString leaf = file.AfterLast(wxFileName::GetPathSeparator());
+	leaf = leaf.AfterLast(wxT('/'));
+	return leaf;
+}
+
+wxString BuildOriginLabel(const wxString& file, int line)
+{
+	const wxString bareFile = ExtractFileLeaf(file).Strip(wxString::both);
+	if (bareFile.IsEmpty()) {
+		return wxString();
+	}
+
+	wxString origin(bareFile);
+	if (line > 0) {
+		origin << wxT("(") << line << wxT(")");
+	}
+	return origin;
+}
+
 }
 
 
@@ -77,6 +157,7 @@ CDebugCategory g_debugcats[] = {
 	CDebugCategory( logPfConvert,		wxT("PartFileConvert") ),
 	CDebugCategory( logMuleUDP,		wxT("MuleUDPSocket" ) ),
 	CDebugCategory( logThreads,		wxT("ThreadScheduler" ) ),
+	CDebugCategory( logThreading,		wxT("Threading" ) ),
 	CDebugCategory( logUPnP,		wxT("Universal Plug and Play" ) ),
 	CDebugCategory( logKadUdpFwTester,	wxT("Kademlia UDP Firewall Tester") ),
 	CDebugCategory( logKadPacketTracking,	wxT("Kademlia Packet Tracking") ),
@@ -131,8 +212,8 @@ void CLogger::ConfigurePersistentOutput(const wxString& separator)
 
 
 void CLogger::AddLogLine(
-	const wxString& DEBUG_ONLY(file),
-	int DEBUG_ONLY(line),
+	const wxString& file,
+	int line,
 	bool critical,
 	DebugType type,
 	const wxString &str,
@@ -140,7 +221,9 @@ void CLogger::AddLogLine(
 	bool toGUI)
 {
 	wxString msg(str);
-// handle Debug messages
+	wxString category;
+	const wxString level = DetermineLogLevelLabel(critical, msg);
+	// handle Debug messages
 	if (type != logStandard) {
 		if (!critical && !IsEnabled(type)) {
 			return;
@@ -155,25 +238,21 @@ void CLogger::AddLogLine(
 			const CDebugCategory& cat = g_debugcats[ index ];
 			wxASSERT(type == cat.GetType());
 
-			msg = cat.GetName() + wxT(": ") + msg;
+			category = cat.GetName();
 		} else {
 			wxFAIL;
 		}
 	}
 
-#ifdef __DEBUG__
-	if (line) {
-		msg = file.AfterLast(wxFileName::GetPathSeparator()).AfterLast(wxT('/')) << wxT("(") << line << wxT("): ") + msg;
-	}
-#endif
+	const wxString origin = BuildOriginLabel(file, line);
 
 	if (toGUI && !wxThread::IsMain()) {
 		// put to background
-		CLoggingEvent Event(critical, toStdout, toGUI, msg);
+		CLoggingEvent Event(critical, toStdout, toGUI, msg, level, category, origin);
 		AddPendingEvent(Event);
 	} else {
 		// Try to handle events immediately when possible (to save to file).
-		DoLines(msg, critical, toStdout, toGUI);
+		DoLines(msg, critical, toStdout, toGUI, level, category, origin);
 	}
 }
 
@@ -227,11 +306,11 @@ void CLogger::CloseLogfile()
 
 void CLogger::OnLoggingEvent(class CLoggingEvent& evt)
 {
-	DoLines(evt.Message(), evt.IsCritical(), evt.ToStdout(), evt.ToGUI());
+	DoLines(evt.Message(), evt.IsCritical(), evt.ToStdout(), evt.ToGUI(), evt.Level(), evt.Category(), evt.Origin());
 }
 
 
-void CLogger::DoLines(const wxString & lines, bool critical, bool toStdout, bool toGUI)
+void CLogger::DoLines(const wxString & lines, bool critical, bool toStdout, bool toGUI, const wxString& level, const wxString& category, const wxString& origin)
 {
 	// Remove newspace at end
 	wxString bufferline = lines.Strip(wxString::trailing);
@@ -239,16 +318,16 @@ void CLogger::DoLines(const wxString & lines, bool critical, bool toStdout, bool
 	const wxDateTime now = wxDateTime::Now();
 	const wxString baseStamp = now.FormatISODate() + wxT(" ") + now.FormatISOTime();
 #ifdef CLIENT_GUI
-	const wxString guiStamp = baseStamp + wxT(" (remote-GUI): ");
+	const wxString guiStamp = baseStamp + wxT(" (remote-GUI)");
 	const wxString persistentStamp = baseStamp + wxT(" (remote-GUI)");
 #else
-	const wxString guiStamp = baseStamp + wxT(": ");
+	const wxString guiStamp = baseStamp;
 	const wxString persistentStamp = baseStamp;
 #endif
 
-	// critical lines get a ! prepended, ordinary lines a blank
-	// logfile-only lines get a . to prevent transmission on EC
-	const wxString prefix = !toGUI ? wxT(".") : (critical ? wxT("!") : wxT(" "));
+	// GUI keeps the critical marker, but the logfile should stay neutral.
+	const wxString guiPrefix = critical ? wxT("!") : wxT(" ");
+	const wxString persistentPrefix = !toGUI ? wxT(".") : wxT(" ");
 
 	if ( bufferline.IsEmpty() ) {
 		// If it's empty we just write a blank line with no timestamp.
@@ -256,10 +335,32 @@ void CLogger::DoLines(const wxString & lines, bool critical, bool toStdout, bool
 	} else {
 		// Split multi-line messages into individual lines
 		wxStringTokenizer tokens( bufferline, wxT("\n") );
+		const wxString moduleLabel = DetermineModuleLabel(category);
 		while ( tokens.HasMoreTokens() ) {
 			const wxString token = tokens.GetNextToken();
-			const wxString guiLine = prefix + guiStamp + token + wxT("\n");
-			const wxString persistentLine = prefix + persistentStamp + m_persistentSeparator + token + wxT("\n");
+			const wxString cleanToken = StripKnownLogPrefix(token);
+			const wxString guiLine = guiPrefix
+				+ WrapLogColumn(guiStamp)
+				+ m_persistentSeparator
+				+ WrapLogColumn(level)
+				+ m_persistentSeparator
+				+ WrapLogColumn(moduleLabel)
+				+ m_persistentSeparator
+				+ WrapLogColumn(origin)
+				+ m_persistentSeparator
+				+ WrapLogColumn(cleanToken)
+				+ wxT("\n");
+			const wxString persistentLine = persistentPrefix
+				+ WrapLogColumn(persistentStamp)
+				+ m_persistentSeparator
+				+ WrapLogColumn(level)
+				+ m_persistentSeparator
+				+ WrapLogColumn(moduleLabel)
+				+ m_persistentSeparator
+				+ WrapLogColumn(origin)
+				+ m_persistentSeparator
+				+ WrapLogColumn(cleanToken)
+				+ wxT("\n");
 			DoLine(persistentLine, guiLine, toStdout, toGUI);
 		}
 	}

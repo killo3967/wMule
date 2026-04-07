@@ -30,6 +30,7 @@
 
 #include <wx/wx.h>
 #include <wx/cmdline.h>			// Needed for wxCmdLineParser
+#include <wx/filename.h>
 #include <wx/snglinst.h>		// Needed for wxSingleInstanceChecker
 #include <wx/textfile.h>		// Needed for wxTextFile
 #include <wx/config.h>			// Do_not_auto_remove (win32)
@@ -52,6 +53,25 @@
 #ifndef CLIENT_GUI
 #include "DownloadQueue.h"
 #endif
+
+namespace {
+
+CPath GetTimestampedLogBackupName(const CPath& logfileName)
+{
+	wxFileName backupFile(logfileName.GetRaw());
+	const wxString stamp = wxDateTime::Now().Format(wxT("%Y%m%d-%H%M%S"));
+	const wxString backupName = backupFile.GetName() + wxT("-") + stamp;
+
+	backupFile.SetName(backupName);
+
+	for (unsigned suffix = 1; backupFile.FileExists(); ++suffix) {
+		backupFile.SetName(backupName + CFormat(wxT("-%u")) % suffix);
+	}
+
+	return CPath(backupFile.GetFullPath());
+}
+
+} // namespace
 
 CamuleAppCommon::CamuleAppCommon()
 {
@@ -300,18 +320,16 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 		thePrefs::SetConfigDir(/*OtherFunctions::*/GetConfigDir(m_configFile));
 	}
 
-	// Backtracing works in MSW.
-	// Problem is just that the backtraces are useless, because apparently the context gets lost
-	// in the try/catch somewhere.
-	// So leave it out.
-#ifndef __WINDOWS__
 	#if wxUSE_ON_FATAL_EXCEPTION
-		if ( !cmdline.Found(wxT("disable-fatal")) ) {
-			// catch fatal exceptions
+		// Windows never exposes --disable-fatal; on Unix-like builds we keep the opt-out.
+		#if defined(__WINDOWS__)
 			wxHandleFatalExceptions(true);
-		}
+		#else
+			if ( !cmdline.Found(wxT("disable-fatal")) ) {
+				wxHandleFatalExceptions(true);
+			}
+		#endif
 	#endif
-#endif
 
 	theLogger.SetEnabledStdoutLog(cmdline.Found(wxT("log-stdout")));
 #ifdef AMULE_DAEMON
@@ -328,7 +346,14 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 	if ( cmdline.Found(wxT("geometry"), &m_geometryString) ) {
 		m_geometryEnabled = true;
 	}
-#endif
+	#endif
+
+	// Create the CFG file we shall use and set the config object as the global cfg file
+	wxConfig::Set(new wxFileConfig( wxEmptyString, wxEmptyString, thePrefs::GetConfigDir() + m_configFile));
+
+	wxString loggingWarning;
+	const bool loggingPathValid = CPreferences::BootstrapLoggingConfig(wxConfigBase::Get(), &loggingWarning);
+	theLogger.ConfigurePersistentOutput(CPreferences::GetLogFileSeparator());
 
 	if (theLogger.IsEnabledStdoutLog()) {
 		if ( enable_daemon_fork ) {
@@ -433,17 +458,14 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 	}
 #endif
 
-	// Create the CFG file we shall use and set the config object as the global cfg file
-	wxConfig::Set(new wxFileConfig( wxEmptyString, wxEmptyString, thePrefs::GetConfigDir() + m_configFile));
-
-	wxString loggingWarning;
-	const bool loggingPathValid = CPreferences::BootstrapLoggingConfig(wxConfigBase::Get(), &loggingWarning);
-	theLogger.ConfigurePersistentOutput(CPreferences::GetLogFileSeparator());
-
 	// Make a backup of the log file
 	CPath logfileName = CPath(CPreferences::GetLogFilePath());
 	if (logfileName.FileExists()) {
-		CPath::BackupFile(logfileName, wxT(".bak"));
+		const CPath backupLogName = GetTimestampedLogBackupName(logfileName);
+		if (!CPath::RenameFile(logfileName, backupLogName, false)
+			&& !CPath::CloneFile(logfileName, backupLogName, true)) {
+			fputs("WARNING: unable to archive previous log file\n", stderr);
+		}
 	}
 
 	// Open the log file

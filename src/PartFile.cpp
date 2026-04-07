@@ -139,16 +139,13 @@ typedef std::list<Chunk> ChunkList;
 
 #ifndef CLIENT_GUI
 
+\
 CPartFile::CPartFile()
-	: m_asyncTaskMutex(new wxMutex()),
-	  m_asyncTaskCond(new wxCondition(*m_asyncTaskMutex))
 {
 	Init();
 }
 
 CPartFile::CPartFile(CSearchFile* searchresult)
-	: m_asyncTaskMutex(new wxMutex()),
-	  m_asyncTaskCond(new wxCondition(*m_asyncTaskMutex))
 {
 	Init();
 
@@ -241,8 +238,6 @@ CPartFile::CPartFile(CSearchFile* searchresult)
 
 
 CPartFile::CPartFile(const CED2KFileLink* fileLink)
-	: m_asyncTaskMutex(new wxMutex()),
-	  m_asyncTaskCond(new wxCondition(*m_asyncTaskMutex))
 {
 	Init();
 
@@ -3589,9 +3584,7 @@ void CPartFile::GetRatingAndComments(FileRatingList & list) const
 #else   // CLIENT_GUI
 
 CPartFile::CPartFile(const CEC_PartFile_Tag *tag)
-	: CKnownFile(tag),
-	  m_asyncTaskMutex(new wxMutex()),
-	  m_asyncTaskCond(new wxCondition(*m_asyncTaskMutex))
+	: CKnownFile(tag)
 {
 	Init();
 
@@ -3678,9 +3671,6 @@ void CPartFile::Init()
 		m_bAutoDownPriority = false;
 	}
 
-	m_asyncTaskCount = 0;
-	m_asyncTasksBlocked = false;
-
 	transferingsrc = 0; // new
 
 	kBpsDown = 0.0;
@@ -3726,49 +3716,35 @@ void CPartFile::Init()
 
 bool CPartFile::BeginAsyncTask() const
 {
-	wxCHECK(m_asyncTaskMutex && m_asyncTaskCond, false);
-	wxMutexLocker lock(*m_asyncTaskMutex);
-	if (m_asyncTasksBlocked) {
-		return false;
-	}
-	++m_asyncTaskCount;
-	return true;
+	return m_asyncGate.BeginTask();
 }
 
 
 void CPartFile::EndAsyncTask() const
 {
-	wxCHECK_RET(m_asyncTaskMutex && m_asyncTaskCond, wxT("Async task primitives not initialized"));
-	wxMutexLocker lock(*m_asyncTaskMutex);
-	wxASSERT_MSG(m_asyncTaskCount > 0, wxT("Async task counter underflow"));
-	if (m_asyncTaskCount > 0) {
-		--m_asyncTaskCount;
-	}
-	if (m_asyncTasksBlocked && m_asyncTaskCount == 0) {
-		m_asyncTaskCond->Broadcast();
-	}
+	m_asyncGate.EndTask();
 }
 
 
-void CPartFile::RequestAsyncTaskShutdown() const
+void CPartFile::RequestAsyncTaskShutdown(std::chrono::milliseconds timeout) const
 {
-	wxCHECK_RET(m_asyncTaskMutex && m_asyncTaskCond, wxT("Async task primitives not initialized"));
-	wxMutexLocker lock(*m_asyncTaskMutex);
-	if (m_asyncTasksBlocked && m_asyncTaskCount == 0) {
-		return;
+	if (timeout.count() <= 0) {
+		const Threading::ThreadPrefsSnapshot prefs = Threading::CaptureThreadPrefs();
+		timeout = prefs.drainTimeout.count() > 0 ? prefs.drainTimeout : std::chrono::milliseconds(thePrefs::GetThreadDrainTimeoutMs());
 	}
-	m_asyncTasksBlocked = true;
-	while (m_asyncTaskCount != 0) {
-		m_asyncTaskCond->Wait();
-	}
+	m_asyncGate.RequestShutdown(timeout);
 }
 
 
 bool CPartFile::IsAsyncTaskShuttingDown() const
 {
-	wxCHECK(m_asyncTaskMutex, false);
-	wxMutexLocker lock(*m_asyncTaskMutex);
-	return m_asyncTasksBlocked;
+	return m_asyncGate.IsShuttingDown();
+}
+
+
+Threading::PartFileAsyncSnapshot CPartFile::GetAsyncSnapshot() const
+{
+	return m_asyncGate.Snapshot();
 }
 
 wxString CPartFile::getPartfileStatus() const

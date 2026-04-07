@@ -9,11 +9,15 @@ add_library (mulecommon STATIC
 	StringFunctions.cpp
 	TextFile.cpp
 	ThreadPool.cpp
+	threading/ThreadGuards.cpp
 	AsyncSocket.cpp
 )
 
 target_include_directories (mulecommon
 	PRIVATE ${wMule_BINARY_DIR}
+	PUBLIC ${LIBS_INCLUDE_DIR}
+	PUBLIC ${SRC_DIR}
+	PUBLIC ${WMULE_GENERATED_DIR}
 )
 
 target_link_libraries (mulecommon

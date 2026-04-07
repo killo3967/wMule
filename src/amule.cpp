@@ -25,9 +25,12 @@
 
 
 #include "amule.h"			// Interface declarations.
+#include <common/threading/ThreadGuards.h>
+#include "libs/common/ThreadPool.h"
 
 #include <csignal>
 #include <cstring>
+#include <chrono>
 #include <wx/process.h>
 #include <wx/sstream.h>
 #include "config.h"			// Needed for HAVE_GETRLIMIT, HAVE_SETRLIMIT,
@@ -458,7 +461,7 @@ bool CamuleApp::OnInit()
 		thePrefs::SetTempDir(CPath(tempValidation.m_normalizedPath));
 		internalContext.m_tempDir = tempValidation.m_normalizedPath;
 		if (tempValidation.m_isExternalToBase) {
-			AddLogLineCS(wxT("Temp directory is external to configuration base (validated)."));
+			AddLogLineCS(wxT("WARNING: Temp directory is external to configuration base (validated)."));
 		}
 	} else {
 		wxString fallbackTemp = GetDefaultInternalPath(EInternalPathKind::TempDir, internalContext);
@@ -478,7 +481,7 @@ bool CamuleApp::OnInit()
 		thePrefs::SetIncomingDir(CPath(incomingValidation.m_normalizedPath));
 		internalContext.m_incomingDir = incomingValidation.m_normalizedPath;
 		if (incomingValidation.m_isExternalToBase) {
-			AddLogLineCS(wxT("Incoming directory is external to configuration base (validated)."));
+			AddLogLineCS(wxT("WARNING: Incoming directory is external to configuration base (validated)."));
 		}
 	} else {
 		wxString fallbackIncoming = GetDefaultInternalPath(EInternalPathKind::IncomingDir, internalContext);
@@ -984,7 +987,11 @@ bool CamuleApp::ApplyCoreUPnP(bool forceRetry)
 		const CUPnPLastResult& lastResult = thePrefs::GetLastUPnPResultCore();
 		CUPnPOperationReport report = m_upnp->ExecuteMappings(m_upnpMappings, wxT("core"), lastResult, effectiveForceRetry);
 		thePrefs::SetLastUPnPResultCore(ToUPnPLastResult(report));
-		AddLogLineC(FormatUPnPOperationSummary(report));
+		if (report.status == UPNP_LAST_OK || report.status == UPNP_LAST_DISABLED) {
+			AddLogLineN(FormatUPnPOperationSummary(report));
+		} else {
+			AddLogLineC(CFormat(wxT("WARNING: %s")) % FormatUPnPOperationSummary(report));
+		}
 		if (!report.lastError.IsEmpty() && report.status != UPNP_LAST_OK) {
 			AddLogLineCS(report.lastError);
 		}
@@ -1225,12 +1232,12 @@ void CamuleApp::Localize_mule()
 			resolvedInfo = wxLocale::GetLanguageInfo(langId);
 		}
 	}
-	AddLogLineCS(CFormat(wxT("[i18n] Startup language preference='%s' resolvedId=%d canonical='%s'"))
+	AddLogLineN(CFormat(wxT("[i18n] Startup language preference='%s' resolvedId=%d canonical='%s'"))
 		% langPref
 		% langId
 		% (resolvedInfo ? resolvedInfo->CanonicalName : wxString(wxT("<null>"))));
 	InitLocale(m_locale, langId);
-	AddLogLineCS(CFormat(wxT("[i18n] Locale init result ok=%d currentLanguage=%d"))
+	AddLogLineN(CFormat(wxT("[i18n] Locale init result ok=%d currentLanguage=%d"))
 		% (m_locale.IsOk() ? 1 : 0)
 		% m_locale.GetLanguage());
 	if (!m_locale.IsOk()) {
@@ -1369,6 +1376,29 @@ void CamuleApp::OnCoreTimer(CTimerEvent& WXUNUSED(evt))
 		return;
 	}
 	recurse = true;
+
+	if (Threading::ShutdownToken().IsActive()) {
+		recurse = false;
+		return;
+	}
+
+	const bool shouldLogThreading = thePrefs::GetVerboseThreading() || theLogger.IsEnabled(logThreading);
+	if (shouldLogThreading && glob_prefs != nullptr) {
+		const Threading::StatsSnapshot snapshot = Threading::CaptureStatsSnapshot(*glob_prefs);
+		AddDebugLogLineC(logThreading,
+			CFormat(wxT("threading pending=%u wakeups=%llu debt=%u partFileTimeouts=%u schedulerDrain=%d uploads=%u waiting=%u downloads=%u drainTimeoutMs=%lu dl=%llu ul=%llu"))
+				% snapshot.ownership.pendingTasks
+				% static_cast<unsigned long long>(snapshot.ownership.wakeups)
+				% snapshot.ownership.throttlerDebt
+				% snapshot.ownership.timedOutPartFiles
+				% static_cast<int>(snapshot.ownership.lastDrainResult)
+				% snapshot.activeUploads
+				% snapshot.waitingUploads
+				% snapshot.activeDownloads
+				% static_cast<unsigned long>(snapshot.prefs.drainTimeout.count())
+				% static_cast<unsigned long long>(snapshot.sessionDownloadedBytes)
+				% static_cast<unsigned long long>(snapshot.sessionUploadedBytes));
+	}
 
 	uploadqueue->Process();
 	downloadqueue->Process();
@@ -1570,6 +1600,17 @@ void CamuleApp::ShutDown()
 
 	// Signal the hashing thread to terminate
 	m_app_state = APP_STATE_SHUTTINGDOWN;
+	Threading::ShutdownToken().Activate();
+	AddDebugLogLineN(logThreading, wxT("Thread shutdown token activated"));
+	const std::chrono::milliseconds drainTimeout(thePrefs::GetThreadDrainTimeoutMs());
+	if (downloadqueue != nullptr) {
+		const uint16 fileCount = downloadqueue->GetFileCount();
+		for (uint16 i = 0; i < fileCount; ++i) {
+			if (CPartFile* part = downloadqueue->GetFileByIndex(i)) {
+				part->RequestAsyncTaskShutdown(drainTimeout);
+			}
+		}
+	}
 
 	// Stop ASIO thread
 #ifdef ASIO_SOCKETS			// only needed to suppress the log message in non-Asio build
@@ -1589,11 +1630,32 @@ void CamuleApp::ShutDown()
 	// Exit HTTP downloads
 	CHTTPDownloadThread::StopAll();
 
+	const Threading::DrainResult schedulerDrain = CThreadScheduler::Drain(drainTimeout);
+	const Threading::DrainResult poolDrain = CThreadPool::Instance().Drain(drainTimeout);
+	const Threading::DrainResult throttlerDrain = uploadBandwidthThrottler->Drain(drainTimeout);
+
 	// Exit thread scheduler and upload thread
 	CThreadScheduler::Terminate();
 
 	AddDebugLogLineN(logGeneral, wxT("Terminate upload thread."));
 	uploadBandwidthThrottler->EndThread();
+
+	if (glob_prefs != nullptr) {
+		const Threading::StatsSnapshot snapshot = Threading::CaptureStatsSnapshot(*glob_prefs);
+		AddDebugLogLineN(logThreading,
+			CFormat(wxT("ShutdownSummary pending=%u wakeups=%llu debt=%u partFileTimeouts=%u schedulerDrain=%d poolDrain=%d throttlerDrain=%d uploads=%u waiting=%u downloads=%u drainTimeoutMs=%lu"))
+				% snapshot.ownership.pendingTasks
+				% static_cast<unsigned long long>(snapshot.ownership.wakeups)
+				% snapshot.ownership.throttlerDebt
+				% snapshot.ownership.timedOutPartFiles
+				% static_cast<int>(schedulerDrain)
+				% static_cast<int>(poolDrain)
+				% static_cast<int>(throttlerDrain)
+				% snapshot.activeUploads
+				% snapshot.waitingUploads
+				% snapshot.activeDownloads
+				% static_cast<unsigned long>(snapshot.prefs.drainTimeout.count()));
+	}
 
 	// Close sockets to avoid new clients coming in
 	if (listensocket) {
@@ -1829,7 +1891,7 @@ void CamuleApp::CheckNewVersion(uint32 result)
 		file.Close();
 		wxRemoveFile(filename);
 	} else {
-		AddLogLineC(_("Failed to download the version check file"));
+		AddLogLineN(wxT("WARNING: Failed to download the version check file"));
 	}
 
 }
@@ -2076,13 +2138,13 @@ void CamuleApp::ShowConnectionState(bool forceUpdate)
 				// We connected to some server
 				const wxString id = theApp->serverconnect->IsLowID() ? _("with LowID") : _("with HighID");
 
-				AddLogLineC(CFormat(_("Connected to %s %s")) % connected_server % id);
+				AddLogLineN(CFormat(_("Connected to %s %s")) % connected_server % id);
 			} else {
 				// cppcheck-suppress duplicateBranch
 				if ( theApp->serverconnect->IsConnecting() ) {
-					AddLogLineC(CFormat(_("Connecting to %s")) % connected_server);
+					AddLogLineN(CFormat(_("Connecting to %s")) % connected_server);
 				} else {
-					AddLogLineC(_("Disconnected from eD2k"));
+					AddLogLineN(_("Disconnected from eD2k"));
 				}
 			}
 		}
@@ -2090,9 +2152,9 @@ void CamuleApp::ShowConnectionState(bool forceUpdate)
 		if (changed_flags & CONNECTED_KAD_NOT) {
 			// cppcheck-suppress duplicateBranch
 			if (state & CONNECTED_KAD_NOT) {
-				AddLogLineC(_("Kad started."));
+				AddLogLineN(wxT("Kad started."));
 			} else {
-				AddLogLineC(_("Kad stopped."));
+				AddLogLineN(wxT("Kad stopped."));
 			}
 		}
 
@@ -2100,12 +2162,12 @@ void CamuleApp::ShowConnectionState(bool forceUpdate)
 			if (state & (CONNECTED_KAD_OK | CONNECTED_KAD_FIREWALLED)) {
 				// cppcheck-suppress duplicateBranch
 				if (state & CONNECTED_KAD_OK) {
-					AddLogLineC(_("Connected to Kad (ok)"));
+					AddLogLineN(wxT("Connected to Kad (ok)"));
 				} else {
-					AddLogLineC(_("Connected to Kad (firewalled)"));
+					AddLogLineN(wxT("WARNING: Connected to Kad (firewalled)"));
 				}
 			} else {
-				AddLogLineC(_("Disconnected from Kad"));
+				AddLogLineN(wxT("Disconnected from Kad"));
 			}
 		}
 

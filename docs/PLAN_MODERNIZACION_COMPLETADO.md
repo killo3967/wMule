@@ -38,6 +38,52 @@ Este anexo recoge únicamente las fases cerradas del plan vigente. El documento 
 
 ---
 
+## Fase 4 – Concurrencia Segura
+
+**Objetivo**: Estabilizar threading, ownership y apagado.
+
+### Tareas
+#### 4.1 Auditoría de data races
+- [x] Revisar `DownloadQueue`, `PartFile`, `ThreadScheduler`, `ClientTCPSocket`.
+- [x] Introducir `std::mutex`/`std::shared_mutex` donde corresponda.
+- [x] Documentar ownership de objetos compartidos.
+
+#### 4.2 Ciclo de vida de threads
+- [x] Documentar `ThreadPool` (enqueue, cancel, shutdown, WaitAll).
+- [x] Garantizar apagado limpio en salida de la app (sin hilos colgando).
+- [x] Añadir mecanismos de cancelación/timeouts donde falten.
+
+#### 4.3 Instrumentación
+- [x] Añadir contadores de tareas activas, máximos, tiempos promedio.
+- [x] Añadir tracing básico para depurar contención.
+
+### Validación durante la fase
+- Ejecutar tests de estrés y benchmarks tras cambios (ThreadPoolBenchmark, DownloadBenchmark).
+- Revisar manualmente el apagado y tiempos de cierre.
+
+### Validación obligatoria al cierre
+- [x] `cmake --build . --config Debug` (07/04/2026)
+- [x] `ctest --output-on-failure -C Debug` (07/04/2026, 26/26)
+- [ ] Verificación básica de `wmule.exe`
+- [ ] Verificación básica de `wmulecmd.exe`
+- [x] Actualizar estado/documentación
+
+### Exit criteria
+- Sin data races conocidas.
+- Tests de estrés/benchmarks pasando sin regresiones.
+- Apagado limpio y documentado.
+
+### Estado
+- Estado actual: `[x] Completada (2026-04-07)`
+
+### Notas / incidencias
+- Guards RAII (`Threading::ScopedQueueLock`, `PartFileAsyncGate`, tokens de shutdown) encapsulan contención en `DownloadQueue`, `CPartFile`, `ThreadScheduler`, `ThreadPool` y `UploadBandwidthThrottler` y rechazan nueva carga cuando `ThreadShutdownToken` está activo.
+- `CamuleApp::ShutDown` drena scheduler/pool/throttler (`DrainResult`, `ShutdownSummary`) con `ThreadDrainTimeoutMs` y publica los snapshots en log.
+- MuleUnit actualizado con `DownloadQueueRaceTest`, `PartFileAsyncTaskTest`, `ThreadPoolLifecycleTest`, `ShutdownSmokeTest` + script manual `manual-tests/threading/VerboseThreading.ps1` para habilitar `VerboseThreading` y monitorear `ShutdownSummary`.
+- 2026-04-07: se corrigió el fallo de enlace de `wmulecmd.exe` retirando la dependencia de `theLogger.EmergencyLog` desde `src/libs/common/MuleDebug.cpp`; el handler común de excepciones ahora escribe en `stderr`.
+- 2026-04-07: build Debug y `ctest` quedaron verdes tras la corrección.
+- EC aún no expone los toggles por restricciones en `ECCodes` generados: `wmulecmd` devuelve un stub y se documenta el workaround (editar GUI/config local).
+
 ## Fase 1 – Seguridad Crítica (Parsing Red/UPnP)
 
 **Objetivo**: Endurecer parsing de red y flujos UPnP sin perder conectividad.

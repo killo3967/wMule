@@ -28,6 +28,9 @@
 #include <functional>
 #include <atomic>
 #include <vector>
+#include <chrono>
+
+#include <common/threading/ThreadGuards.h>
 
 class CThreadPool {
 public:
@@ -37,7 +40,10 @@ public:
     CThreadPool& operator=(const CThreadPool&) = delete;
 
     template<typename F>
-    void Enqueue(F&& task) {
+    void Enqueue(F&& task, bool allowWhileShuttingDown = false) {
+        if (!allowWhileShuttingDown && !Threading::ShutdownToken().GuardEnqueueOrErr("CThreadPool::Enqueue")) {
+            return;
+        }
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             m_tasks.push(std::forward<F>(task));
@@ -45,11 +51,10 @@ public:
         m_cv.notify_one();
     }
 
+    Threading::DrainResult Drain(std::chrono::milliseconds timeout);
+
     void WaitAll() {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        m_complete.wait(lock, [this] {
-            return m_tasks.empty() && m_activeTasks == 0;
-        });
+        Drain(std::chrono::milliseconds(0));
     }
 
     size_t GetQueueSize() {
@@ -84,8 +89,8 @@ private:
 };
 
 template<typename F>
-void ThreadPoolEnqueue(F&& task) {
-    CThreadPool::Instance().Enqueue(std::forward<F>(task));
+void ThreadPoolEnqueue(F&& task, bool allowWhileShuttingDown = false) {
+	CThreadPool::Instance().Enqueue(std::forward<F>(task), allowWhileShuttingDown);
 }
 
 #endif // AMULE_THREADPOOL_H

@@ -87,6 +87,22 @@ void CThreadPool::WorkerThread() {
     }
 }
 
+Threading::DrainResult CThreadPool::Drain(std::chrono::milliseconds timeout)
+{
+	std::unique_lock<std::mutex> lock(m_mutex);
+	Threading::DrainResult result = Threading::DrainResult::Completed;
+	const auto emptyPredicate = [this]() {
+		return m_tasks.empty() && m_activeTasks == 0;
+	};
+	if (timeout.count() <= 0) {
+		m_complete.wait(lock, emptyPredicate);
+	} else if (!m_complete.wait_for(lock, timeout, emptyPredicate)) {
+		result = Threading::DrainResult::TimedOut;
+	}
+	Threading::ThreadMetrics::Instance().RegisterDrainResult(result);
+	return result;
+}
+
 void CThreadPool::SetThreadCount(size_t count) {
     std::lock_guard<std::mutex> lock(m_mutex);
     size_t newCount = std::max(m_minThreads, std::min(count, m_maxThreads));

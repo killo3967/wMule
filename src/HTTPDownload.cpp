@@ -289,7 +289,7 @@ CMuleThread::ExitCode CHTTPDownloadThread::Entry()
 			wxRemoveFile(m_tempfile);
 		}
 		if (!error.IsEmpty()) {
-			AddLogLineC(error);
+			AddLogLineN(CFormat(wxT("WARNING: %s")) % error);
 		}
 	}
 

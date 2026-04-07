@@ -1,5 +1,8 @@
 include_directories(${WMULE_GENERATED_COMMON_DIR})
 include_directories(${WMULE_GENERATED_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/src/libs)
+
+set(THREADING_TEST_STUB ${CMAKE_CURRENT_SOURCE_DIR}/ThreadingTestStubs.cpp)
 
 add_executable (CTagTest
 	CTagTest.cpp
@@ -256,6 +259,112 @@ target_include_directories (KadHandlerFuzzTest
 )
 
 target_link_libraries (KadHandlerFuzzTest
+	muleunit
+)
+
+add_executable (ThreadingGuardsTest
+	ThreadingGuardsTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/threading/ThreadGuards.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	${THREADING_TEST_STUB}
+)
+
+add_test (NAME ThreadingGuardsTest
+	COMMAND ThreadingGuardsTest
+)
+
+target_include_directories (ThreadingGuardsTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (ThreadingGuardsTest
+	muleunit
+)
+
+add_executable (DownloadQueueRaceTest
+	DownloadQueueRaceTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/threading/ThreadGuards.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	${THREADING_TEST_STUB}
+)
+
+add_test (NAME DownloadQueueRaceTest
+	COMMAND DownloadQueueRaceTest
+)
+
+target_include_directories (DownloadQueueRaceTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (DownloadQueueRaceTest
+	muleunit
+)
+
+add_executable (PartFileAsyncTaskTest
+	PartFileAsyncTaskTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/threading/ThreadGuards.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	${THREADING_TEST_STUB}
+)
+
+add_test (NAME PartFileAsyncTaskTest
+	COMMAND PartFileAsyncTaskTest
+)
+
+target_include_directories (PartFileAsyncTaskTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (PartFileAsyncTaskTest
+	muleunit
+)
+
+add_executable (ThreadPoolLifecycleTest
+	ThreadPoolLifecycleTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/ThreadPool.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/threading/ThreadGuards.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	${THREADING_TEST_STUB}
+)
+
+add_test (NAME ThreadPoolLifecycleTest
+	COMMAND ThreadPoolLifecycleTest
+)
+
+target_include_directories (ThreadPoolLifecycleTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (ThreadPoolLifecycleTest
+	muleunit
+)
+
+add_executable (ShutdownSmokeTest
+	ShutdownSmokeTest.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/threading/ThreadGuards.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/Format.cpp
+	${CMAKE_SOURCE_DIR}/src/libs/common/strerror_r.c
+	${THREADING_TEST_STUB}
+)
+
+add_test (NAME ShutdownSmokeTest
+	COMMAND ShutdownSmokeTest
+)
+
+target_include_directories (ShutdownSmokeTest
+	PRIVATE ${CMAKE_SOURCE_DIR}/src
+	PRIVATE ${CMAKE_SOURCE_DIR}/src/include
+)
+
+target_link_libraries (ShutdownSmokeTest
 	muleunit
 )
 

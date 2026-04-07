@@ -235,48 +235,7 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 
 ---
 
-> **Nota**: Las fases completadas (Fase 0, Fase 1 y Fase 2) se trasladaron a `docs/PLAN_MODERNIZACION_COMPLETADO.md` para mantener este documento enfocado en el trabajo activo.
-
-## Fase 4 – Concurrencia Segura
-
-**Objetivo**: Estabilizar threading, ownership y apagado.
-
-### Tareas
-#### 4.1 Auditoría de data races
-- [ ] Revisar `DownloadQueue`, `PartFile`, `ThreadScheduler`, `ClientTCPSocket`.
-- [ ] Introducir `std::mutex`/`std::shared_mutex` donde corresponda.
-- [ ] Documentar ownership de objetos compartidos.
-
-#### 4.2 Ciclo de vida de threads
-- [ ] Documentar `ThreadPool` (enqueue, cancel, shutdown, WaitAll).
-- [ ] Garantizar apagado limpio en salida de la app (sin hilos colgando).
-- [ ] Añadir mecanismos de cancelación/timeouts donde falten.
-
-#### 4.3 Instrumentación
-- [ ] Añadir contadores de tareas activas, máximos, tiempos promedio.
-- [ ] Añadir tracing básico para depurar contención.
-
-### Validación durante la fase
-- Ejecutar tests de estrés y benchmarks tras cambios (ThreadPoolBenchmark, DownloadBenchmark).
-- Revisar manualmente el apagado y tiempos de cierre.
-
-### Validación obligatoria al cierre
-- [ ] `cmake --build . --config Debug`
-- [ ] `ctest --output-on-failure -C Debug`
-- [ ] Verificación básica de `wmule.exe`
-- [ ] Verificación básica de `wmulecmd.exe`
-- [ ] Actualizar estado/documentación
-
-### Exit criteria
-- Sin data races conocidas.
-- Tests de estrés/benchmarks pasando sin regresiones.
-- Apagado limpio y documentado.
-
-### Estado
-- Estado actual: `[ ] Pendiente`
-
-### Notas / incidencias
-- Ninguna.
+> **Nota**: Las fases completadas (Fase 0, Fase 1, Fase 2, Fase 3 y Fase 4) se trasladaron a `docs/PLAN_MODERNIZACION_COMPLETADO.md` para mantener este documento enfocado en el trabajo activo.
 
 ---
 

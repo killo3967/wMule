@@ -271,7 +271,7 @@ void CServerConnect::ConnectionEstablished(CServerSocket* sender)
 		theStats::AddReconnect();
 		theStats::GetServerConnectTimer()->ResetTimer();
 		connected = true;
-		AddLogLineC(CFormat( _("Connection established on: %s") ) % sender->cur_server->GetListName());
+		AddLogLineN(CFormat( _("Connection established on: %s") ) % sender->cur_server->GetListName());
 		connectedsocket = sender;
 
 		StopConnectionTry();

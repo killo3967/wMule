@@ -1061,8 +1061,8 @@ CInternalPathResult NormalizeInternalDir(EInternalPathKind kind,
 			}
 
 			result.m_isExternalToBase = true;
-			AddDebugLogLineC(logGeneral, wxT("Accepted %s outside base '%s' (validated)."),
-				DescribeInternalPathKind(kind), normalizedBase);
+			AddDebugLogLineC(logGeneral, CFormat(wxT("WARNING: Accepted %s outside base '%s' (validated)."))
+				% DescribeInternalPathKind(kind) % normalizedBase);
 		}
 	}
 
