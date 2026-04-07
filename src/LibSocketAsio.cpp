@@ -43,9 +43,9 @@
 #include <algorithm>	// Needed for std::min - Boost up to 1.54 fails to compile with MSVC 2013 otherwise
 
 #include <boost/asio.hpp>
-#include <boost/asio/deadline_timer.hpp>
-#include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/bind.hpp>
+#include <boost/asio/bind_executor.hpp>
+#include <boost/asio/steady_timer.hpp>
+#include <chrono>
 #include <boost/version.hpp>
 
 //
@@ -73,6 +73,17 @@
 using namespace boost::asio;
 using namespace boost::system;	// for error_code
 static io_context s_io_service;
+
+namespace {
+	using Clock = std::chrono::steady_clock;
+
+	template<typename Duration>
+	double ToMilliseconds(Duration duration)
+	{
+		return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(duration).count()) / 1000.0;
+	}
+
+}
 
 // Number of threads in the Asio thread pool
 const int CAsioService::m_numberOfThreads = 4;
@@ -116,6 +127,14 @@ public:
 		m_eventPending = false;
 		m_port = 0;
 		m_sendBuffer = nullptr;
+		m_readOpStart = Clock::now();
+		m_writeOpStart = Clock::now();
+		m_totalReadLatencyMs = 0.0;
+		m_totalWriteLatencyMs = 0.0;
+		m_totalReadBytes = 0;
+		m_totalWriteBytes = 0;
+		m_readOps = 0;
+		m_writeOps = 0;
 		m_connected = false;
 		m_closed = false;
 		m_isDestroying = false;
@@ -161,7 +180,9 @@ public:
 			return m_OK;
 		} else {
 			m_socket->async_connect(adr.GetEndpoint(),
-				m_strand.wrap(boost::bind(& CAsioSocketImpl::HandleConnect, this, placeholders::error)));
+				boost::asio::bind_executor(m_strand, [this](const error_code& ec) {
+					HandleConnect(ec);
+				}));
 			// m_OK and return are false because we are not connected yet
 			return false;
 		}
@@ -266,9 +287,13 @@ public:
 			return 0;
 		}
 		AddDebugLogLineF(logAsio, CFormat(wxT("Write %d %s")) % nbytes % m_IP);
+		m_writeOpStart = Clock::now();
+		++m_writeOps;
 		m_sendBuffer = new char[nbytes];
 		memcpy(m_sendBuffer, buf, nbytes);
-		dispatch(m_strand, boost::bind(& CAsioSocketImpl::DispatchWrite, this, nbytes));
+		boost::asio::dispatch(m_strand, [this, nbytes]() {
+			DispatchWrite(nbytes);
+		});
 		m_ErrorCode = 0;
 		return nbytes;
 	}
@@ -282,7 +307,9 @@ public:
 			if (m_sync || s_io_service.stopped()) {
 				DispatchClose();
 			} else {
-				dispatch(m_strand, boost::bind(& CAsioSocketImpl::DispatchClose, this));
+				boost::asio::dispatch(m_strand, [this]() {
+					DispatchClose();
+				});
 			}
 		}
 	}
@@ -303,8 +330,10 @@ public:
 			// Close prevents creation of any more callbacks, but does not clear any callbacks already
 			// sitting in Asio's event queue (I have seen such a crash).
 			// So create a delay timer so they can be called until core is notified.
-			m_timer.expires_from_now(boost::posix_time::seconds(1));
-			m_timer.async_wait(m_strand.wrap(boost::bind(& CAsioSocketImpl::HandleDestroy, this)));
+			m_timer.expires_after(std::chrono::seconds(1));
+			m_timer.async_wait(boost::asio::bind_executor(m_strand, [this](const error_code&) {
+				HandleDestroy();
+			}));
 		}
 	}
 
@@ -425,14 +454,18 @@ private:
 	void DispatchBackgroundRead()
 	{
 		AddDebugLogLineF(logAsio, CFormat(wxT("DispatchBackgroundRead %s")) % m_IP);
-		m_socket->async_read_some(null_buffers(),
-			m_strand.wrap(boost::bind(& CAsioSocketImpl::HandleRead, this, placeholders::error)));
+		m_socket->async_wait(socket_base::wait_read,
+			boost::asio::bind_executor(m_strand, [this](const error_code& ec) {
+				HandleRead(ec);
+			}));
 	}
 
 	void DispatchWrite(uint32 nbytes)
 	{
 		async_write(*m_socket, buffer(m_sendBuffer, nbytes),
-			m_strand.wrap(boost::bind(& CAsioSocketImpl::HandleSend, this, placeholders::error, placeholders::bytes_transferred)));
+			boost::asio::bind_executor(m_strand, [this](const error_code& ec, size_t bytesTransferred) {
+				HandleSend(ec, bytesTransferred);
+			}));
 	}
 
 	//
@@ -469,6 +502,8 @@ private:
 				AddDebugLogLineN(logAsio, CFormat(wxT("HandleSend Error %d %s")) % bytes_transferred % m_IP);
 				PostLostEvent();
 			} else {
+				m_totalWriteLatencyMs += ToMilliseconds(Clock::now() - m_writeOpStart);
+				m_totalWriteBytes += bytes_transferred;
 				AddDebugLogLineF(logAsio, CFormat(wxT("HandleSend %d %s")) % bytes_transferred % m_IP);
 				m_blocksWrite = false;
 				CoreNotify_LibSocketSend(m_libSocket, m_ErrorCode);
@@ -521,6 +556,10 @@ private:
 			return;
 		}
 
+		m_totalReadLatencyMs += ToMilliseconds(Clock::now() - m_readOpStart);
+		m_totalReadBytes += m_readBufferContent;
+		++m_readOps;
+
 		m_readPending = false;
 		m_blocksRead = false;
 		PostReadEvent(2);
@@ -528,6 +567,7 @@ private:
 
 	void HandleDestroy()
 	{
+		LogTelemetry(wxT("TCP"));
 		AddDebugLogLineF(logAsio, CFormat(wxT("HandleDestroy() %p %p %s")) % m_libSocket % this % m_IP);
 		CoreNotify_LibSocketDestroy(m_libSocket);
 	}
@@ -541,7 +581,24 @@ private:
 	{
 		m_readPending = true;
 		m_readBufferContent = 0;
-		dispatch(m_strand, boost::bind(& CAsioSocketImpl::DispatchBackgroundRead, this));
+		m_readOpStart = Clock::now();
+		boost::asio::dispatch(m_strand, [this]() {
+			DispatchBackgroundRead();
+		});
+	}
+
+	void LogTelemetry(const wxChar * socketType)
+	{
+		if (m_readOps == 0 && m_writeOps == 0) {
+			return;
+		}
+
+		double avgReadMs = m_readOps ? (m_totalReadLatencyMs / m_readOps) : 0.0;
+		double avgWriteMs = m_writeOps ? (m_totalWriteLatencyMs / m_writeOps) : 0.0;
+		AddDebugLogLineF(logAsio,
+			CFormat(wxT("%s telemetry %s read_ops=%u read_bytes=%llu avg_read_ms=%.3f write_ops=%u write_bytes=%llu avg_write_ms=%.3f"))
+			% socketType % m_IP % m_readOps % static_cast<unsigned long long>(m_totalReadBytes)
+			% avgReadMs % m_writeOps % static_cast<unsigned long long>(m_totalWriteBytes) % avgWriteMs);
 	}
 
 	void PostReadEvent(int DEBUG_ONLY(from) )
@@ -621,8 +678,16 @@ private:
 	uint32			m_readBufferContent;
 	bool			m_eventPending;
 	char *			m_sendBuffer;
+	Clock::time_point	m_readOpStart;
+	Clock::time_point	m_writeOpStart;
+	double			m_totalReadLatencyMs;
+	double			m_totalWriteLatencyMs;
+	uint64			m_totalReadBytes;
+	uint64			m_totalWriteBytes;
+	uint32			m_readOps;
+	uint32			m_writeOps;
 	io_context::strand	m_strand;		// handle synchronisation in io_service thread pool
-	deadline_timer	m_timer;
+	steady_timer	m_timer;
 	bool			m_connected;
 	bool			m_closed;
 	bool			m_isDestroying;		// true if Destroy() was called
@@ -859,7 +924,9 @@ private:
 	{
 		m_currentSocket.reset(new CAsioSocketImpl(nullptr));
 		async_accept(m_currentSocket->GetAsioSocket(),
-			m_strand.wrap(boost::bind(& CAsioSocketServerImpl::HandleAccept, this, placeholders::error)));
+			boost::asio::bind_executor(m_strand, [this](const error_code& error) {
+				HandleAccept(error);
+			}));
 	}
 
 	void HandleAccept(const error_code& error)
@@ -879,7 +946,9 @@ private:
 		}
 		// We were not successful. Try again.
 		// Post the request to the event queue to make sure it doesn't get called immediately.
-		post(m_strand, boost::bind(& CAsioSocketServerImpl::StartAccept, this));
+		boost::asio::post(m_strand, [this]() {
+			StartAccept();
+		});
 	}
 
 	// The wrapper object
@@ -979,6 +1048,14 @@ public:
 		m_socket = nullptr;
 		m_readBuffer = new char[CMuleUDPSocket::UDP_BUFFER_SIZE];
 		m_OK = true;
+		m_readOpStart = Clock::now();
+		m_writeOpStart = Clock::now();
+		m_totalReadLatencyMs = 0.0;
+		m_totalWriteLatencyMs = 0.0;
+		m_totalReadBytes = 0;
+		m_totalWriteBytes = 0;
+		m_readOps = 0;
+		m_writeOps = 0;
 		CreateSocket();
 	}
 
@@ -1025,7 +1102,11 @@ public:
 		// Collect data, make a copy of the buffer's content
 		CUDPData * recdata = new CUDPData(buf, nBytes, addr);
 		AddDebugLogLineF(logAsio, CFormat(wxT("UDP SendTo %d to %s")) % nBytes % addr.IPAddress());
-		dispatch(m_strand, boost::bind(& CAsioUDPSocketImpl::DispatchSendTo, this, recdata));
+		m_writeOpStart = Clock::now();
+		++m_writeOps;
+		boost::asio::dispatch(m_strand, [this, recdata]() {
+			DispatchSendTo(recdata);
+		});
 		return nBytes;
 	}
 
@@ -1039,7 +1120,9 @@ public:
 		if (s_io_service.stopped()) {
 			DispatchClose();
 		} else {
-			dispatch(m_strand, boost::bind(& CAsioUDPSocketImpl::DispatchClose, this));
+			boost::asio::dispatch(m_strand, [this]() {
+				DispatchClose();
+			});
 		}
 	}
 
@@ -1053,8 +1136,10 @@ public:
 			// Close prevents creation of any more callbacks, but does not clear any callbacks already
 			// sitting in Asio's event queue (I have seen such a crash).
 			// So create a delay timer so they can be called until core is notified.
-			m_timer.expires_from_now(boost::posix_time::seconds(1));
-			m_timer.async_wait(m_strand.wrap(boost::bind(& CAsioUDPSocketImpl::HandleDestroy, this)));
+			m_timer.expires_after(std::chrono::seconds(1));
+			m_timer.async_wait(boost::asio::bind_executor(m_strand, [this](const error_code&) {
+				HandleDestroy();
+			}));
 		}
 	}
 
@@ -1084,7 +1169,9 @@ private:
 		AddDebugLogLineF(logAsio, CFormat(wxT("UDP DispatchSendTo %d to %s:%d")) % recdata->size
 			% endpoint.address().to_string() % endpoint.port());
 		m_socket->async_send_to(buffer(recdata->buffer, recdata->size), endpoint,
-			m_strand.wrap(boost::bind(& CAsioUDPSocketImpl::HandleSendTo, this, placeholders::error, placeholders::bytes_transferred, recdata)));
+			boost::asio::bind_executor(m_strand, [this, recdata](const error_code& ec, size_t bytesTransferred) {
+				HandleSendTo(ec, bytesTransferred, recdata);
+			}));
 	}
 
 	//
@@ -1100,6 +1187,9 @@ private:
 		} else if (m_muleSocket == nullptr) {
 			AddDebugLogLineN(logAsio, wxT("UDP HandleReadError no handler"));
 		} else {
+			m_totalReadLatencyMs += ToMilliseconds(Clock::now() - m_readOpStart);
+			m_totalReadBytes += received;
+			++m_readOps;
 
 			amuleIPV4Address ipadr = amuleIPV4Address(CamuleIPV4Endpoint(m_receiveEndpoint));
 			AddDebugLogLineF(logAsio, CFormat(wxT("UDP HandleRead %d %s:%d")) % received % ipadr.IPAddress() % ipadr.Service());
@@ -1121,6 +1211,9 @@ private:
 			AddDebugLogLineN(logAsio, CFormat(wxT("UDP HandleSendToError %s")) % ec.message());
 		} else if (sent != recdata->size) {
 			AddDebugLogLineN(logAsio, CFormat(wxT("UDP HandleSendToError tosend: %d sent %d")) % recdata->size % sent);
+		} else {
+			m_totalWriteLatencyMs += ToMilliseconds(Clock::now() - m_writeOpStart);
+			m_totalWriteBytes += sent;
 		}
 		if (m_muleSocket == nullptr) {
 			AddDebugLogLineN(logAsio, wxT("UDP HandleSendToError no handler"));
@@ -1133,6 +1226,7 @@ private:
 
 	void HandleDestroy()
 	{
+		LogTelemetry(wxT("UDP"));
 		AddDebugLogLineF(logAsio, CFormat(wxT("HandleDestroy() %p %p")) % m_libSocket % this);
 		delete m_libSocket;
 	}
@@ -1159,16 +1253,41 @@ private:
 
 	void StartBackgroundRead()
 	{
+		m_readOpStart = Clock::now();
 		m_socket->async_receive_from(buffer(m_readBuffer, CMuleUDPSocket::UDP_BUFFER_SIZE), m_receiveEndpoint,
-			m_strand.wrap(boost::bind(& CAsioUDPSocketImpl::HandleRead, this, placeholders::error, placeholders::bytes_transferred)));
+			boost::asio::bind_executor(m_strand, [this](const error_code& ec, size_t received) {
+				HandleRead(ec, received);
+			}));
+	}
+
+	void LogTelemetry(const wxChar * socketType)
+	{
+		if (m_readOps == 0 && m_writeOps == 0) {
+			return;
+		}
+
+		double avgReadMs = m_readOps ? (m_totalReadLatencyMs / m_readOps) : 0.0;
+		double avgWriteMs = m_writeOps ? (m_totalWriteLatencyMs / m_writeOps) : 0.0;
+		AddDebugLogLineF(logAsio,
+			CFormat(wxT("%s telemetry %s read_ops=%u read_bytes=%llu avg_read_ms=%.3f write_ops=%u write_bytes=%llu avg_write_ms=%.3f"))
+			% socketType % m_address.IPAddress() % m_readOps % static_cast<unsigned long long>(m_totalReadBytes)
+			% avgReadMs % m_writeOps % static_cast<unsigned long long>(m_totalWriteBytes) % avgWriteMs);
 	}
 
 	CLibUDPSocket *		m_libSocket;
 	ip::udp::socket *	m_socket;
 	CMuleUDPSocket *	m_muleSocket;
 	bool				m_OK;
+	Clock::time_point	m_readOpStart;
+	Clock::time_point	m_writeOpStart;
+	double			m_totalReadLatencyMs;
+	double			m_totalWriteLatencyMs;
+	uint64			m_totalReadBytes;
+	uint64			m_totalWriteBytes;
+	uint32			m_readOps;
+	uint32			m_writeOps;
 	io_context::strand	m_strand;		// handle synchronisation in io_service thread pool
-	deadline_timer		m_timer;
+		steady_timer		m_timer;
 	amuleIPV4Address	m_address;
 
 	// One fix receive buffer

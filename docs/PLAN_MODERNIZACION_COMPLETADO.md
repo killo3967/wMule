@@ -136,6 +136,28 @@ Este anexo recoge únicamente las fases cerradas del plan vigente. El documento 
 
 ---
 
+## Fase 5 – Async Incremental
+
+**Estado**: `[x] Completada (2026-04-07)`
+
+**Resumen**: Se modernizó `src/LibSocketAsio.cpp` eliminando `deadline_timer`, `null_buffers`, `io_context::strand::wrap` y `boost::bind`, sustituyéndolos por `steady_timer`, `bind_executor`, `async_wait(wait_read)` y lambdas. Además se añadió telemetría mínima de latencia/throughput para sockets TCP/UDP y se validó el cambio con build, `ctest` y benchmarks manuales.
+
+**Validaciones obligatorias ejecutadas (07/04/2026)**
+- [x] `cmake --build . --config Debug`
+- [x] `ctest --output-on-failure -C Debug`
+- [x] `ThreadPoolBenchmark.exe`
+- [x] `DownloadBenchmark.exe`
+- [x] Verificación básica de `wmule.exe`
+- [x] Verificación básica de `wmulecmd.exe`
+- [x] Documentación actualizada (`PLAN_MODERNIZACION_2.0.md`, `PLAN_MODERNIZACION_COMPLETADO.md`)
+
+**Notas**
+- Ruta piloto cerrada: `StartBackgroundRead()` → `DispatchBackgroundRead()` → `HandleRead()`.
+- Fallback conservado: camino síncrono (`m_sync`) y adaptador legacy permanecen sin cambios de wire format.
+- Benchmarks de referencia mantenidos verdes y usados como baseline para la comparación manual.
+
+---
+
 ## Fase 2 – Rutas, Archivos y Configuración Remota (trabajo completado)
 
 **Estado**: `[x] Completada (2026-04-02)`

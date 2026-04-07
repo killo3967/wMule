@@ -1,7 +1,7 @@
 # wMule Build Memory - AI Agent Documentation
 
 **Project:** wMule (Windows Mule)  
-**Version:** 1.0.3  
+**Version:** 1.0.5  
 **Base:** aMule 2.4.0  
 **Date:** 2026-04-05  
 **Author:** Tomas Platero  
@@ -82,6 +82,27 @@ Reducir la deuda técnica inicial de la Fase 4 endureciendo conversiones de tipo
 
 ### Resultado
 - **wMule 1.0.3** se publica como baseline con build limpia (solo warnings heredados de Boost.Asio), preparando el terreno para el resto de la Fase 4.
+
+---
+
+## Release 1.0.5 – 2026-04-07
+
+### Objetivo
+Cerrar la Fase 5 (Async Incremental) modernizando `LibSocketAsio`, añadiendo telemetría mínima y manteniendo intacto el fallback legacy.
+
+### Cambios principales
+- `LibSocketAsio.cpp` elimina `deadline_timer`, `null_buffers`, `io_context::strand::wrap` y `boost::bind`, sustituyéndolos por `steady_timer`, `bind_executor`, `async_wait(wait_read)` y lambdas.
+- Se añade telemetría mínima TCP/UDP para latencia/throughput por socket sin cambiar el wire format ni la ruta síncrona.
+- Se actualiza el plan de modernización: Fase 5 marcada como completada y archivada en `PLAN_MODERNIZACION_COMPLETADO.md`.
+
+### Validaciones
+- `cmake --build . --config Debug`
+- `ctest --output-on-failure -C Debug`
+- `ThreadPoolBenchmark.exe`
+- `DownloadBenchmark.exe`
+
+### Resultado
+- **wMule 1.0.5** queda como baseline posterior a Fase 5, con la ruta Asio modernizada y comparativas de rendimiento disponibles.
 
 ---
 

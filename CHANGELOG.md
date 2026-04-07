@@ -18,6 +18,15 @@ Reemplazar headers GPL largos (~24 líneas) por versión simplificada (~6 línea
 
 ---
 
+## [1.0.5] - 2026-04-07
+
+### Fase 5 – Async Incremental
+- `LibSocketAsio.cpp` migrado fuera de `deadline_timer`, `null_buffers`, `io_context::strand::wrap` y `boost::bind`.
+- Se añadieron métricas mínimas de latencia/throughput para sockets TCP/UDP sin cambiar el wire format.
+- Validación ejecutada con `cmake --build . --config Debug`, `ctest --output-on-failure -C Debug`, `ThreadPoolBenchmark.exe` y `DownloadBenchmark.exe`.
+
+---
+
 ## [1.0.3] - 2026-04-05
 
 ### Deuda Fase 4 – Conversions & Build Cleanliness

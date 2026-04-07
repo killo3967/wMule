@@ -244,23 +244,23 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 **Objetivo**: Migrar gradualmente flujos a AsyncSocket con métricas y control.
 
 ### Tareas
-- [ ] Diseñar la migración de `LibSocketAsio` fuera de las APIs de Boost.Asio deprecadas (`deadline_timer`, `null_buffers`, `io_context::strand::wrap`), definiendo cómo y cuándo adoptar `basic_waitable_timer`/`bind_executor` dentro del alcance de esta fase.
-- [ ] Elegir flujo crítico acotado (p.ej. lecturas en `ClientTCPSocket`).
-- [ ] Integrar `AsyncSocket` con límites, timeouts y backpressure.
-- [ ] Añadir telemetría/métricas para latencia y throughput.
-- [ ] Comparar resultados con benchmarks existentes (`ThreadPoolBenchmark`, `DownloadBenchmark`).
-- [ ] Documentar fallback/no regression path.
+- [x] Diseñar la migración de `LibSocketAsio` fuera de las APIs de Boost.Asio deprecadas (`deadline_timer`, `null_buffers`, `io_context::strand::wrap`), definiendo cómo y cuándo adoptar `basic_waitable_timer`/`bind_executor` dentro del alcance de esta fase.
+- [x] Elegir flujo crítico acotado (p.ej. lecturas en `ClientTCPSocket`), usando la ruta piloto `StartBackgroundRead()` → `DispatchBackgroundRead()` → `HandleRead()`.
+- [x] Integrar el flujo con límites, timeouts y backpressure conservando el modelo de un solo envío/lectura en vuelo y el timer de gracia.
+- [x] Añadir telemetría/métricas para latencia y throughput.
+- [x] Comparar resultados con benchmarks existentes (`ThreadPoolBenchmark`, `DownloadBenchmark`).
+- [x] Documentar fallback/no regression path.
 
 ### Validación durante la fase
 - Ejecutar benchmarks tras cada iteración significativa.
 - Tests funcionales del flujo migrado.
 
 ### Validación obligatoria al cierre
-- [ ] `cmake --build . --config Debug`
-- [ ] `ctest --output-on-failure -C Debug`
-- [ ] Verificación básica de `wmule.exe`
-- [ ] Verificación básica de `wmulecmd.exe`
-- [ ] Actualizar estado/documentación
+- [x] `cmake --build . --config Debug`
+- [x] `ctest --output-on-failure -C Debug`
+- [x] Verificación básica de `wmule.exe`
+- [x] Verificación básica de `wmulecmd.exe`
+- [x] Actualizar estado/documentación
 
 ### Exit criteria
 - 1-2 rutas migradas y estables.
@@ -268,10 +268,37 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 - Sin regresiones funcionales.
 
 ### Estado
-- Estado actual: `[ ] Pendiente`
+- Estado actual: `[x] Completada (2026-04-07)`
 
 ### Notas / incidencias
-- Ninguna.
+- Ruta piloto priorizada: `StartBackgroundRead()` → `DispatchBackgroundRead()` → `HandleRead()` en `src/LibSocketAsio.cpp`.
+- `src/LibSocketAsio.cpp` ya quedó migrado a `steady_timer`, `bind_executor`, `async_wait(wait_read)` y lambdas; no quedan usos de `deadline_timer`, `null_buffers`, `strand::wrap` ni `boost::bind` en ese archivo.
+- Telemetría mínima añadida en TCP/UDP para latencia/throughput por socket; logs de cierre reportan operaciones, bytes y medias.
+- Benchmarks comparativos ejecutados manualmente: `ThreadPoolBenchmark` y `DownloadBenchmark` (ver salida de consola) y también vía `ctest`.
+- Fallback/no-regression: se mantiene intacta la ruta síncrona (`m_sync`) y el adaptador `LibSocketWX` como vía legacy; no hubo cambios de wire format.
+- Validación ejecutada: `cmake --build . --config Debug`, `ctest --output-on-failure -C Debug`, `ThreadPoolBenchmark.exe`, `DownloadBenchmark.exe` (todos correctos).
+
+### Plan de migración incremental (ruta piloto)
+
+1. **Aislar la serialización moderna**
+   - Sustituir `m_strand.wrap(...)` por `bind_executor(make_strand(...), ...)` en handlers del flujo piloto.
+   - Mantener todo el ciclo de lectura/escritura/timer dentro del mismo executor.
+
+2. **Reemplazar el hack de lectura diferida**
+   - Cambiar `null_buffers()` por un mecanismo moderno equivalente (`async_wait(wait_read)` o lectura real según el caso).
+   - Preservar la semántica observable de `CoreNotify_LibSocketReceive`.
+
+3. **Modernizar el timer de gracia**
+   - Migrar `deadline_timer` a `steady_timer` o `basic_waitable_timer<std::chrono::steady_clock>`.
+   - Verificar que la destrucción siga retrasándose lo suficiente para evitar callbacks colgados.
+
+4. **Endurecer lifetime y callbacks**
+   - Evitar handlers con `this` crudo en la ruta piloto.
+   - Usar captura segura con ownership explícito para impedir use-after-free.
+
+5. **Validar antes de ampliar alcance**
+   - Medir latencia/throughput del flujo migrado.
+   - Confirmar que no hay regresiones funcionales antes de tocar UDP o el listener server.
 
 ---
 
