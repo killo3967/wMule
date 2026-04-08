@@ -386,7 +386,7 @@ void CDownloadQueue::AddDownload(CPartFile* file, bool paused, uint8 category)
 	}
 	Notify_DownloadCtrlAddFile( file );
 	theApp->searchlist->UpdateSearchFileByHash(file->GetFileHash());	// Update file in the search dialog if it's still open
-	AddLogLineC(CFormat(_("Downloading %s")) % file->GetFileName() );
+	AddLogLineN(CFormat(_("Downloading %s")) % file->GetFileName() );
 }
 
 

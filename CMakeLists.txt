@@ -3,7 +3,7 @@
 
 cmake_minimum_required (VERSION 3.15)
 
-project (wMule VERSION 1.0.5)
+project (wMule VERSION 1.0.6)
 
 # C++ Standard
 set(CMAKE_CXX_STANDARD 20)

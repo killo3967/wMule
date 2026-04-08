@@ -2101,6 +2101,7 @@ void CPartFile::CompleteFile(bool bIsHashingDone)
 	theApp->downloadqueue->RemoveLocalServerRequest(this);
 
 	AddDebugLogLineN( logPartFile, wxString( wxT("CPartFile::CompleteFile: Hash ") ) + ( bIsHashingDone ? wxT("done") : wxT("not done") ) );
+	AddDebugLogLineN( logPartFile, CFormat(wxT("CPartFile::CompleteFile: file=%s status=%u stopped=%d")) % GetFileName() % GetStatus() % IsStopped() );
 
 	if (!bIsHashingDone) {
 		SetStatus(PS_COMPLETING);
@@ -2131,6 +2132,8 @@ void CPartFile::CompleteFile(bool bIsHashingDone)
 
 void CPartFile::CompleteFileEnded(bool errorOccured, const CPath& newname)
 {
+	AddDebugLogLineN(logPartFile, CFormat(wxT("CPartFile::CompleteFileEnded: file=%s error=%d newname=%s")) % GetFileName() % errorOccured % newname.GetPrintable());
+
 	if (errorOccured) {
 		m_paused = true;
 		SetStatus(PS_ERROR);
@@ -2171,7 +2174,7 @@ void CPartFile::CompleteFileEnded(bool errorOccured, const CPath& newname)
 		// clear the blackbox to free up memory
 		m_CorruptionBlackBox->Free();
 
-		AddLogLineC(CFormat( _("Finished downloading: %s") ) % GetFileName() );
+		AddLogLineN(CFormat( _("Finished downloading: %s") ) % GetFileName() );
 #ifndef AMULE_DAEMON
 		if (thePrefs::ShowNotifications()) {
 			wxNotificationMessage *notification = new wxNotificationMessage ();

@@ -49,7 +49,7 @@ namespace {
 			return true;
 		}
 
-		wxLogWarning(wxT("[i18n] Unable to load translation catalog for alcc."));
+		wxLogWarning(_("[i18n] Unable to load translation catalog for alcc."));
 		return false;
 	}
 }

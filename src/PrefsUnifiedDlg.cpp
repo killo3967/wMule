@@ -1061,11 +1061,11 @@ void PrefsUnifiedDlg::OnUPnPManualRetry(wxCommandEvent& event)
 
 	if (scope == wxT("core")) {
 		if (!theApp->RetryCoreUPnP(true)) {
-			AddLogLineCS(wxT("UPnP retry failed, revisá los logs para más detalles."));
+			AddLogLineCS(_("UPnP retry failed, check the logs for more details."));
 		}
 	} else {
 		thePrefs::RequestUPnPForceRetry(scope);
-		AddLogLineCS(wxT("UPnP retry for the web server will run on the next web server restart and will ignore the suppression window."));
+		AddLogLineCS(_("UPnP retry for the web server will run on the next web server restart and will ignore the suppression window."));
 	}
 
 	UpdateUPnPStatusUI();

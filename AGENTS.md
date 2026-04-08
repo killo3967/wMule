@@ -124,7 +124,7 @@ Additionally:
 
 - verify basic startup of `src\Debug\wmule.exe`
 - verify basic startup/use of `src\Debug\wmulecmd.exe`
-- if the change touches documentation or the roadmap, update `docs\PLAN_MODERNIZACION_2.0.md`
+- siguee roadmap, update `docs\PLAN_MODERNIZACION_2.0.md`
 
 ### Write Tests
 
@@ -250,6 +250,18 @@ static_assert(sizeof(uint32) == 4, "uint32 must be 4 bytes");
 - Logging: `AddDebugLogLineC()` / `AddLogLineCS()`
 - Debug asserts: `wxASSERT(condition)`
 - Tests: `ASSERT_RAISES(CAssertFailureException, ...)`
+
+## Internationalization (i18n / NLS)
+
+- The official i18n system is **gettext + `.po/.mo`** and must be preserved unless the user explicitly decides otherwise.
+- Any user-visible string added or modified in code must be integrated into the gettext workflow.
+- Do not add raw user-facing literals in GUI, CLI, EC, or web-facing code without translation markers.
+- Use the project’s existing translation patterns such as `_()`, `wxTRANSLATE()`, and the established plural handling.
+- When changing translatable strings, keep catalogs synchronized with the source code in the same task.
+- Do not manually edit `.mo` files.
+- For the complete workflow, maintenance rules, and script requirements, see `docs/i18n.md`.
+
+
 
 ### Core Code Rules
 
@@ -426,7 +438,7 @@ Note: `compile_commands.json` lives in `build-ninja/`; point clangd at that dire
 From `src/include/common/ClientVersion.h`:
 
 ```cpp
-#define VERSION      1.0.3
-#define MOD_VERSION "1.0.3"
-#define MOD_VERSION_LONG "wMule 1.0.3"
+#define VERSION      1.0.6
+#define MOD_VERSION "1.0.6"
+#define MOD_VERSION_LONG "wMule 1.0.6"
 ```

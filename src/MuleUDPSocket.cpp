@@ -167,19 +167,18 @@ void CMuleUDPSocket::OnReceive(int errorCode)
 		OnReceiveError(lastError, ip, port);
 	} else if (length < 2) {
 		// 2 bytes (protocol and opcode) is the smallets possible packet.
-		AddDebugLogLineN(logMuleUDP, m_name + wxT(": Invalid Packet received"));
+		AddDebugLogLineN(logMuleUDP, CFormat(_("%s: Invalid Packet received")) % m_name);
 	} else if (!ip) {
 		// wxFAIL;
-		AddLogLineNS(wxT("Unknown ip receiving a UDP packet! Ignoring: '") + addr.IPAddress() + wxT("'"));
+		AddLogLineNS(_("Unknown ip receiving a UDP packet! Ignoring: '") + addr.IPAddress() + _("'"));
 	} else if (!port) {
 		// wxFAIL;
-		AddLogLineNS(wxT("Unknown port receiving a UDP packet! Ignoring"));
+		AddLogLineNS(_("Unknown port receiving a UDP packet! Ignoring"));
 	} else if (theApp->clientlist->IsBannedClient(ip)) {
-		AddDebugLogLineN(logMuleUDP, m_name + wxT(": Dropped packet from banned IP ") + addr.IPAddress());
+		AddDebugLogLineN(logMuleUDP, CFormat(_("%s: Dropped packet from banned IP %s")) % m_name % addr.IPAddress());
 	} else {
-		AddDebugLogLineN(logMuleUDP, (m_name + wxT(": Packet received ("))
-			<< addr.IPAddress() << wxT(":") << port << wxT("): ")
-			<< length << wxT("b"));
+		AddDebugLogLineN(logMuleUDP, CFormat(_("%s: Packet received (%s:%u): %ub"))
+			% m_name % addr.IPAddress() % port % length);
 		OnPacketReceived(ip, port, (uint8_t*)buffer, length);
 	}
 }

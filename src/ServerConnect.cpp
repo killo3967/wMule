@@ -258,12 +258,12 @@ void CServerConnect::ConnectionEstablished(CServerSocket* sender)
 
 		CPacket* packet = new CPacket(data, OP_EDONKEYPROT, OP_LOGINREQUEST);
 		#ifdef DEBUG_CLIENT_PROTOCOL
-		AddLogLineC(wxT("Client: OP_LOGINREQUEST"));
-		AddLogLineC(wxString(wxT("        Hash     : ")) << thePrefs::GetUserHash().Encode());
-		AddLogLineC(wxString(wxT("        ClientID : ")) << GetClientID());
-		AddLogLineC(wxString(wxT("        Port     : ")) << thePrefs::GetPort());
-		AddLogLineC(wxString(wxT("        User Nick: ")) << thePrefs::GetUserNick());
-		AddLogLineC(wxString(wxT("        Edonkey  : ")) << EDONKEYVERSION);
+		AddLogLineC(_("Client: OP_LOGINREQUEST"));
+		AddLogLineC(wxString(_("        Hash     : ")) << thePrefs::GetUserHash().Encode());
+		AddLogLineC(wxString(_("        ClientID : ")) << GetClientID());
+		AddLogLineC(wxString(_("        Port     : ")) << thePrefs::GetPort());
+		AddLogLineC(wxString(_("        User Nick: ")) << thePrefs::GetUserNick());
+		AddLogLineC(wxString(_("        Edonkey  : ")) << EDONKEYVERSION);
 		#endif
 		theStats::AddUpOverheadServer(packet->GetPacketSize());
 		SendPacket(packet, true, sender);
@@ -291,7 +291,7 @@ void CServerConnect::ConnectionEstablished(CServerSocket* sender)
 			theStats::AddUpOverheadServer(packet->GetPacketSize());
 			SendPacket(packet, true);
 			#ifdef DEBUG_CLIENT_PROTOCOL
-			AddLogLineC(wxT("Client: OP_GETSERVERLIST"));
+			AddLogLineC(_("Client: OP_GETSERVERLIST"));
 			#endif
 		}
 	}
@@ -597,7 +597,7 @@ void CServerConnect::KeepConnectionAlive()
 
 		CPacket* packet = new CPacket(files, OP_EDONKEYPROT, OP_OFFERFILES);
 		#ifdef DEBUG_CLIENT_PROTOCOL
-		AddLogLineC(wxT("Client: OP_OFFERFILES"));
+		AddLogLineC(_("Client: OP_OFFERFILES"));
 		#endif
 		// compress packet
 		//   - this kind of data is highly compressible (N * (1 MD4 and at least 3 string meta data tags and 1 integer meta data tag))

@@ -34,6 +34,9 @@
 - Enumerar validaciones ejecutadas.
 - Anotar incidencias abiertas si las hay.
 
+### Nota de mantenimiento
+- 2026-04-08: se simplificó el flujo gettext en scripts Python dedicados (`generate-pot.py` y `compile-translations.py`) y se retiró el experimento de IA local.
+
 ---
 
 ## 1. Hoja de Ruta Fases 2.0
@@ -105,6 +108,7 @@ No incluye en este bloque:
 - [ ] Identificar semántica síncrona/asíncrona, correlación implícita entre petición y respuesta, FIFO de peticiones y colas de notificación por cliente.
 - [ ] Catalogar capacidades consumidas por `wmulecmd`, `amuleweb` y demás clientes EC existentes.
 - [ ] Identificar puntos de acoplamiento con el core, deuda técnica, riesgos de seguridad, límites de compatibilidad y huecos de observabilidad.
+- [ ] Registrar `ed2k://` como protocolo asociado a `wmule.exe` en Windows y evaluar si además conviene auto-detectar enlaces del portapapeles para igualar el flujo rápido de eMule.
 - [ ] Generar un inventario funcional/técnico de EC v2 **basado en código real**, con nota explícita de discrepancias entre documentación y comportamiento observado.
 
 #### BT-EC.2 – Preservación explícita y pruebas de no regresión sobre EC v2

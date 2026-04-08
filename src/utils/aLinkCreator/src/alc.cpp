@@ -48,7 +48,7 @@ namespace {
 			return true;
 		}
 
-		wxLogWarning(wxT("[i18n] Unable to load translation catalog for alc."));
+		wxLogWarning(_("[i18n] Unable to load translation catalog for alc."));
 		return false;
 	}
 }

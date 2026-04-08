@@ -1,10 +1,8 @@
 src/AddFriend.cpp
 src/amuleAppCommon.cpp
 src/amule.cpp
-src/amuled.cpp
 src/amuleDlg.cpp
 src/amule-gui.cpp
-src/amule-remote-gui.cpp
 src/BaseClient.cpp
 src/CanceledFileList.cpp
 src/CaptchaDialog.cpp

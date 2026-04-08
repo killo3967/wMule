@@ -33,6 +33,8 @@ class amuleIPV4Address;
 
 #ifdef ASIO_SOCKETS
 
+#include <memory>
+
 // Socket flags (unused in ASIO implementation, just provide the names)
 enum {
 	MULE_SOCKET_NONE,
@@ -162,7 +164,7 @@ public:
 	// Do we have a socket available if AcceptWith() is called ?
 	bool	SocketAvailable();
 private:
-	class CAsioSocketServerImpl * m_aServer;
+	std::shared_ptr<class CAsioSocketServerImpl> m_aServer;
 };
 
 

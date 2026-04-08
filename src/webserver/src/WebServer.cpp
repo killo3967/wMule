@@ -371,7 +371,7 @@ void CWebServerBase::OnWebSocketEvent(wxSocketEvent& event)
 
 void CScriptWebServer::ProcessImgFileReq(ThreadData Data)
 {
-	webInterface->DebugShow(wxT("**** imgrequest: ") + Data.sURL + wxT("\n"));
+	webInterface->DebugShow(_("**** imgrequest: ") + Data.sURL + _("\n"));
 
 	const CSession* session = CheckLoggedin(Data);
 
@@ -387,10 +387,10 @@ void CScriptWebServer::ProcessImgFileReq(ThreadData Data)
 		// This unicode2char is ok.
 		Data.pSocket->SendContent(unicode2char(img->GetHTTP()), img_data, img_size);
 	} else if (!session->m_loggedin) {
-		webInterface->DebugShow(wxT("**** imgrequest: failed, not logged in\n"));
+		webInterface->DebugShow(_("**** imgrequest: failed, not logged in\n"));
 		ProcessURL(Data);
 	} else {
-		webInterface->DebugShow(wxT("**** imgrequest: failed\n"));
+		webInterface->DebugShow(_("**** imgrequest: failed\n"));
 	}
 }
 

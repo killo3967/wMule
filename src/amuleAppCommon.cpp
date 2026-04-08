@@ -355,16 +355,19 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 	const bool loggingPathValid = CPreferences::BootstrapLoggingConfig(wxConfigBase::Get(), &loggingWarning);
 	theLogger.ConfigurePersistentOutput(CPreferences::GetLogFileSeparator());
 
+	// Load gettext before the first user-visible log lines.
+	theApp->Localize_mule();
+
 	if (theLogger.IsEnabledStdoutLog()) {
 		if ( enable_daemon_fork ) {
-			AddLogLineNS(wxT("Daemon will fork to background - log to stdout disabled"));	// localization not active yet
+			AddLogLineNS(_("Daemon will fork to background - log to stdout disabled"));
 			theLogger.SetEnabledStdoutLog(false);
 		} else {
-			AddLogLineNS(wxT("Logging to stdout enabled"));
+			AddLogLineNS(_("Logging to stdout enabled"));
 		}
 	}
 
-	AddLogLineNS(wxT("Initialising ") + FullMuleVersion);
+	AddLogLineNS(CFormat(_("Initialising %s")) % FullMuleVersion);
 
 	// Ensure that "~/.wMule/" is accessible.
 	CPath outDir;
@@ -376,7 +379,7 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 		// Make a backup first.
 		wxRemoveFile(thePrefs::GetConfigDir() + m_configFile + wxT(".backup"));
 		wxRenameFile(thePrefs::GetConfigDir() + m_configFile, thePrefs::GetConfigDir() + m_configFile + wxT(".backup"));
-		AddLogLineNS(CFormat(wxT("Your settings have been reset to default values.\nThe old config file has been saved as %s.backup\n")) % m_configFile);
+		AddLogLineNS(CFormat(_("Your settings have been reset to default values.\nThe old config file has been saved as %s.backup\n")) % m_configFile);
 	}
 
 	size_t linksPassed = cmdline.GetParamCount();	// number of links from the command line
@@ -402,26 +405,26 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 			}
 			ed2kFile.Write();
 		} else {
-			AddLogLineCS(wxT("Failed to open 'ED2KLinks', cannot add links."));
+			AddLogLineCS(_("Failed to open 'ED2KLinks', cannot add links."));
 		}
 	}
 
 #if defined(__WXMAC__) && defined(AMULE_DAEMON)
 //#warning TODO: fix wxSingleInstanceChecker for amuled on Mac (wx link problems)
-	AddLogLineCS(wxT("WARNING: The check for other instances is currently disabled in amuled.\n"
+	AddLogLineCS(_("WARNING: The check for other instances is currently disabled in amuled.\n"
 		"Please make sure that no other instance of wMule is running or your files might be corrupted.\n"));
 #else
-	AddLogLineNS(wxT("Checking if there is an instance already running..."));
+	AddLogLineNS(_("Checking if there is an instance already running..."));
 
 	m_singleInstance = new wxSingleInstanceChecker();
 	wxString lockfile = IsRemoteGui() ? wxT("muleLockRGUI") : wxT("muleLock");
 	if (m_singleInstance->Create(lockfile, thePrefs::GetConfigDir())
 		&& m_singleInstance->IsAnotherRunning()) {
-		AddLogLineCS(CFormat(wxT("There is an instance of %s already running")) % m_appName);
-		AddLogLineNS(CFormat(wxT("(lock file: %s%s)")) % thePrefs::GetConfigDir() % lockfile);
+		AddLogLineCS(CFormat(_("There is an instance of %s already running")) % m_appName);
+		AddLogLineNS(CFormat(_("(lock file: %s%s)")) % thePrefs::GetConfigDir() % lockfile);
 		if (linksPassed) {
-			AddLogLineNS(CFormat(wxT("passed %d %s to it, finished")) % linksActuallyPassed
-				% (linksPassed == 1 ? wxT("link") : wxT("links")));
+			AddLogLineNS(CFormat(_("passed %d %s to it, finished")) % linksActuallyPassed
+				% (linksPassed == 1 ? _("link") : _("links")));
 			return false;
 		}
 
@@ -435,14 +438,14 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 			ed2kFile.AddLine(wxT("RAISE_DIALOG"));
 			ed2kFile.Write();
 
-			AddLogLineNS(wxT("Raising current running instance."));
+			AddLogLineNS(_("Raising current running instance."));
 		} else {
-			AddLogLineCS(wxT("Failed to open 'ED2KFile', cannot signal running instance."));
+			AddLogLineCS(_("Failed to open 'ED2KFile', cannot signal running instance."));
 		}
 
 		return false;
 	} else {
-		AddLogLineNS(wxT("No other instances are running."));
+		AddLogLineNS(_("No other instances are running."));
 	}
 #endif
 
@@ -488,11 +491,11 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 	const bool unsafeSessionGate = thePrefs::AllowUnsafeInternalDirsSessionGate();
 	const bool unsafeEffective = thePrefs::AllowUnsafeInternalDirsEffective();
 	if (unsafePrefPersisted && !unsafeSessionGate) {
-		AddLogLineCS(wxT("Unsafe internal directories preference is set but '--allow-unsafe-internal-paths' was not provided; running in safe mode."));
+		AddLogLineCS(_("Unsafe internal directories preference is set but '--allow-unsafe-internal-paths' was not provided; running in safe mode."));
 	} else if (unsafeEffective) {
-		AddLogLineCS(wxT("Unsafe internal directories enabled for this session (outside-base internal paths allowed)."));
+		AddLogLineCS(_("Unsafe internal directories enabled for this session (outside-base internal paths allowed)."));
 	} else if (unsafeSessionGate) {
-		AddLogLineCS(wxT("'--allow-unsafe-internal-paths' provided but preference is disabled; safe mode enforced."));
+		AddLogLineCS(_("'--allow-unsafe-internal-paths' provided but preference is disabled; safe mode enforced."));
 	}
 
 #ifdef CLIENT_GUI
@@ -501,7 +504,7 @@ bool CamuleAppCommon::InitCommon(int argc, wxChar ** argv)
 	wxString amulewebPath;
 	if (cmdline.Found(wxT("use-amuleweb"), &amulewebPath)) {
 		thePrefs::SetWSPath(amulewebPath);
-		AddLogLineNS(CFormat(wxT("Using amuleweb in '%s'.")) % amulewebPath);
+		AddLogLineNS(CFormat(_("Using amuleweb in '%s'.")) % amulewebPath);
 	}
 #endif
 
@@ -582,9 +585,9 @@ bool CamuleAppCommon::CheckMuleDirectory(const wxString& desc, const CPath& dire
 	// Attempt to use fallback directory.
 	const CPath fallback(alternative);
 	if (fallback.IsOk() && (directory != fallback)) {
-		msg << wxT("\nAttempting to use default directory at location \n'")
-			<< alternative << wxT("'.");
-		if (theApp->ShowAlert(msg, wxT("Error accessing directory."), wxICON_ERROR | wxOK | wxCANCEL) == wxCANCEL) {
+		msg << _("\nAttempting to use default directory at location \n'")
+			<< alternative << _("'.");
+		if (theApp->ShowAlert(msg, _("Error accessing directory."), wxICON_ERROR | wxOK | wxCANCEL) == wxCANCEL) {
 			outDir = CPath(wxEmptyString);
 			return false;
 		}
@@ -592,7 +595,7 @@ bool CamuleAppCommon::CheckMuleDirectory(const wxString& desc, const CPath& dire
 		return CheckMuleDirectory(desc, fallback, wxEmptyString, outDir);
 	}
 
-	theApp->ShowAlert(msg, wxT("Fatal error."), wxICON_ERROR | wxOK);
+	theApp->ShowAlert(msg, _("Fatal error."), wxICON_ERROR | wxOK);
 	outDir = CPath(wxEmptyString);
 	return false;
 }

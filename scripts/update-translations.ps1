@@ -4,10 +4,10 @@
 
 .DESCRIPTION
     Utiliza el script Python `po2mo.py` incluido en este directorio para convertir
-    cada archivo .po bajo `po/` en un `amule.mo`. Los resultados se guardan en
-    `assets/locale/<lang>/LC_MESSAGES/amule.mo`. Opcionalmente copia los catálogos
-    al directorio de build para que `wmule.exe`/`wmulecmd.exe` puedan usarlos sin pasos
-    manuales.
+    cada archivo .po bajo `po/` en catálogos `.mo` para los dominios `wmule` y
+    `amule`. Los resultados se guardan en `assets/locale/<lang>/LC_MESSAGES/`.
+    Opcionalmente copia los catálogos al directorio de build para que `wmule.exe`/
+    `wmulecmd.exe` puedan usarlos sin pasos manuales.
 
 .PARAMETER ProjectRoot
     Ruta raíz del proyecto. Por defecto es el padre del directorio del script.

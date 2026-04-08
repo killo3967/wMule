@@ -230,12 +230,12 @@ m_clientSkinNames(CLIENT_SKIN_SIZE)
 
 	m_serverwnd = new CServerWnd(p_cnt, m_srv_split_pos);
 	AddLogLineN(wxEmptyString);
-	AddLogLineN(wxT(" - ") +
+	AddLogLineN(_(" - ") +
 		CFormat(_("This is wMule %s based on eMule.")) % GetMuleVersion());
-	AddLogLineN(wxT("   ") +
+	AddLogLineN(_("   ") +
 		CFormat(_("Running on %s")) % wxGetOsDescription());
-	AddLogLineN(wxT(" - ") +
-		wxString(_("Visit https://github.com/wMule/wMule to check if a new version is available.")));
+	AddLogLineN(_(" - ") +
+		_("Visit https://github.com/wMule/wMule to check if a new version is available."));
 	AddLogLineN(wxEmptyString);
 
 #ifdef ENABLE_IP2COUNTRY
@@ -276,7 +276,7 @@ m_clientSkinNames(CLIENT_SKIN_SIZE)
 		(dlg_size.y != DEFAULT_SIZE_Y) );
 	if (!LoadGUIPrefs(override_where, override_size)) {
 		// Prefs not loaded for some reason, exit
-		AddLogLineC(wxT("Error! Unable to load Preferences") );
+		AddLogLineC(_("Error! Unable to load Preferences") );
 		return;
 	}
 
@@ -333,7 +333,7 @@ void CamuleDlg::ShowED2KLinksHandler( bool show )
 {
 	// Errorchecking in case the pointer becomes invalid ...
 	if (s_fed2klh == nullptr) {
-		wxLogWarning(wxT("Unable to find Fast ED2K Links handler sizer! Hiding FED2KLH aborted."));
+		wxLogWarning(_("Unable to find Fast ED2K Links handler sizer! Hiding FED2KLH aborted."));
 		return;
 	}
 
@@ -346,7 +346,7 @@ void CamuleDlg::ToogleED2KLinksHandler()
 {
 	// Errorchecking in case the pointer becomes invalid ...
 	if (s_fed2klh == nullptr) {
-		wxLogWarning(wxT("Unable to find Fast ED2K Links handler sizer! Toogling FED2KLH aborted."));
+		wxLogWarning(_("Unable to find Fast ED2K Links handler sizer! Toogling FED2KLH aborted."));
 		return;
 	}
 	ShowED2KLinksHandler(!s_dlgcnt->IsShown(s_fed2klh));
@@ -471,7 +471,7 @@ void CamuleDlg::OnToolBarButton(wxCommandEvent& ev)
 
 				// This shouldn't happen, but just in case
 				default:
-					AddLogLineC(wxT("Unknown button triggered CamuleApp::OnToolBarButton().") );
+					AddLogLineC(_("Unknown button triggered CamuleApp::OnToolBarButton().") );
 					break;
 			}
 		}
@@ -1163,7 +1163,7 @@ void CamuleDlg::LaunchUrl( const wxString& url )
 	}
 	// Unable to execute browser. But this error message doesn't make sense,
 	// cosidering that you _can't_ set the browser executable path... =/
-	wxLogError(wxT("Unable to launch browser. Please set correct browser executable path in Preferences."));
+	wxLogError(_("Unable to launch browser. Please set correct browser executable path in Preferences."));
 }
 
 
@@ -1233,12 +1233,12 @@ void CamuleDlg::Add_Skin_Icon(
 		if ( it != cat.end() ) {
 			zip.OpenEntry(*it->second);
 			if ( !new_image.LoadFile(zip,wxBITMAP_TYPE_PNG) ) {
-				AddLogLineN(wxT("Warning: Error loading icon for ") +
+				AddLogLineN(_("Warning: Error loading icon for ") +
 						iconName);
 				useSkins = false;
 			}
 		}else {
-				AddLogLineN(wxT("Warning: Can't load icon for ") +
+				AddLogLineN(_("Warning: Can't load icon for ") +
 						iconName);
 				useSkins = false;
 		}

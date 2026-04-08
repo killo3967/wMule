@@ -487,7 +487,7 @@ void CSearchDlg::StartNewSearch()
 		case 7:	params.typeText = ED2KFTSTR_VIDEO;	break;
 		default:
 			AddDebugLogLineC( logGeneral,
-				CFormat( wxT("Warning! Unknown search-category (%s) selected!") )
+				CFormat( _("Warning! Unknown search-category (%s) selected!") )
 					% params.typeText
 			);
 			break;

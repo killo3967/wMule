@@ -1,7 +1,7 @@
 # wMule Build Memory - AI Agent Documentation
 
 **Project:** wMule (Windows Mule)  
-**Version:** 1.0.5  
+**Version:** 1.0.6
 **Base:** aMule 2.4.0  
 **Date:** 2026-04-05  
 **Author:** Tomas Platero  

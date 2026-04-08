@@ -560,7 +560,7 @@ void CFileDataIO::WriteTag(const CTag& tag)
 				break;
 		}
 	} catch (...) {
-		AddLogLineNS(wxT("Exception in CDataIO:WriteTag"));
+		AddLogLineNS(_("Exception in CDataIO:WriteTag"));
 		throw;
 	}
 }

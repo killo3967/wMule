@@ -29,6 +29,7 @@
 #include "InternalEvents.h"	// Needed for wxEVT_*
 #include "NetworkFunctions.h" // Needed for StringHosttoUint32
 #include "Logger.h"
+#include <wx/intl.h>		// Needed for _()
 
 
 CAsyncDNS::CAsyncDNS(const wxString& ipName, DnsSolveType type, wxEvtHandler* handler, void* socket)
@@ -61,7 +62,7 @@ wxThread::ExitCode CAsyncDNS::Entry()
 			event_data = m_socket;
 			break;
 		default:
-			AddLogLineN(wxT("WRONG TYPE ID ON ASYNC DNS SOLVING!!!"));
+			AddLogLineN(_("WRONG TYPE ID ON ASYNC DNS SOLVING!!!"));
 	}
 
 	if (event_id) {

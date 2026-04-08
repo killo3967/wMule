@@ -63,6 +63,35 @@
 
 //TODO rewrite the whole networkcode, use overlapped sockets
 
+namespace {
+
+wxString GetSharedFileDisplayName(const CMD4Hash& filehash)
+{
+	if (theApp && theApp->sharedfiles) {
+		if (CKnownFile* file = theApp->sharedfiles->GetFileByID(filehash)) {
+			return file->GetFileName().GetPrintable();
+		}
+	}
+
+	return filehash.Encode();
+}
+
+wxString GetUploadingFileDisplayName(const CClientRefList& uploadingList, const CMD4Hash& filehash)
+{
+	for (CClientRefList::const_iterator it = uploadingList.begin(); it != uploadingList.end(); ++it) {
+		const CUpDownClient* client = it->GetClient();
+		if (client && client->GetUploadFileID() == filehash) {
+			if (const CKnownFile* file = client->GetUploadFile()) {
+				return file->GetFileName().GetPrintable();
+			}
+		}
+	}
+
+	return GetSharedFileDisplayName(filehash);
+}
+
+}
+
 CUploadQueue::CUploadQueue()
 {
 	m_nLastStartUpload = 0;
@@ -594,7 +623,7 @@ void CUploadQueue::ResumeUpload( const CMD4Hash& filehash )
 {
 	suspendedUploadsSet.erase(filehash);
 	AddLogLineN(CFormat( _("Resuming uploads of file: %s" ) )
-				% filehash.Encode() );
+				% GetUploadingFileDisplayName(m_uploadinglist, filehash) );
 }
 
 /*
@@ -611,7 +640,7 @@ void CUploadQueue::ResumeUpload( const CMD4Hash& filehash )
 uint16 CUploadQueue::SuspendUpload(const CMD4Hash& filehash, bool terminate)
 {
 	AddLogLineN(CFormat( _("Suspending upload of file: %s" ) )
-				% filehash.Encode() );
+				% GetUploadingFileDisplayName(m_uploadinglist, filehash) );
 	uint16 removed = 0;
 
 	//Append the filehash to the list.

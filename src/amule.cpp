@@ -383,7 +383,7 @@ int CamuleApp::OnExit()
 	//wxDebugContext::PrintClasses();
 	//AddLogLineNS(wxT("***************Dump***************");
 	//wxDebugContext::Dump();
-	AddLogLineNS(wxT("***************Stats**************"));
+	AddLogLineNS(_("***************Stats**************"));
 	wxDebugContext::PrintStatistics(true);
 
 	// Set back to wxLogGui
@@ -409,8 +409,8 @@ int CamuleApp::InitGui(bool, wxString &)
 bool CamuleApp::OnInit()
 {
 #if wxUSE_MEMORY_TRACING
-	// any text before call of Localize_mule needs not to be translated.
-	AddLogLineNS(wxT("Checkpoint set on app init for memory debug"));	// debug output
+	// This checkpoint runs before locale bootstrap, so it stays unlocalized.
+	AddLogLineNS(_("Checkpoint set on app init for memory debug"));	// debug output
 	wxDebugContext::SetCheckpoint();
 #endif
 
@@ -461,13 +461,13 @@ bool CamuleApp::OnInit()
 		thePrefs::SetTempDir(CPath(tempValidation.m_normalizedPath));
 		internalContext.m_tempDir = tempValidation.m_normalizedPath;
 		if (tempValidation.m_isExternalToBase) {
-			AddLogLineCS(wxT("WARNING: Temp directory is external to configuration base (validated)."));
+			AddLogLineCS(_("WARNING: Temp directory is external to configuration base (validated)."));
 		}
 	} else {
 		wxString fallbackTemp = GetDefaultInternalPath(EInternalPathKind::TempDir, internalContext);
 		CInternalPathResult fallbackTempValidation = NormalizeInternalDir(EInternalPathKind::TempDir, fallbackTemp, internalContext);
 		if (fallbackTempValidation.m_ok) {
-			AddLogLineCS(CFormat(wxT("Rejected persisted temp directory '%s' (%s); using '%s'."))
+			AddLogLineCS(CFormat(_("Rejected persisted temp directory '%s' (%s); using '%s'."))
 				% thePrefs::GetTempDir().GetRaw()
 				% InternalPathErrorToString(tempValidation.m_error)
 				% fallbackTempValidation.m_normalizedPath);
@@ -481,13 +481,13 @@ bool CamuleApp::OnInit()
 		thePrefs::SetIncomingDir(CPath(incomingValidation.m_normalizedPath));
 		internalContext.m_incomingDir = incomingValidation.m_normalizedPath;
 		if (incomingValidation.m_isExternalToBase) {
-			AddLogLineCS(wxT("WARNING: Incoming directory is external to configuration base (validated)."));
+			AddLogLineCS(_("WARNING: Incoming directory is external to configuration base (validated)."));
 		}
 	} else {
 		wxString fallbackIncoming = GetDefaultInternalPath(EInternalPathKind::IncomingDir, internalContext);
 		CInternalPathResult fallbackIncomingValidation = NormalizeInternalDir(EInternalPathKind::IncomingDir, fallbackIncoming, internalContext);
 		if (fallbackIncomingValidation.m_ok) {
-			AddLogLineCS(CFormat(wxT("Rejected persisted incoming directory '%s' (%s); using '%s'."))
+			AddLogLineCS(CFormat(_("Rejected persisted incoming directory '%s' (%s); using '%s'."))
 				% thePrefs::GetIncomingDir().GetRaw()
 				% InternalPathErrorToString(incomingValidation.m_error)
 				% fallbackIncomingValidation.m_normalizedPath);
@@ -516,7 +516,7 @@ bool CamuleApp::OnInit()
 	COSDirValidationOutcome osDirOutcome = NormalizeOSDirWithFallback(persistedOSDir, internalContext);
 	if (osDirOutcome.m_result.m_ok) {
 		if (osDirOutcome.m_usedFallback) {
-			AddLogLineCS(CFormat(wxT("Rejected persisted online signature directory '%s' (%s); using '%s'."))
+			AddLogLineCS(CFormat(_("Rejected persisted online signature directory '%s' (%s); using '%s'."))
 				% persistedOSDir
 				% InternalPathErrorToString(osDirOutcome.m_rejectedError)
 				% osDirOutcome.m_result.m_normalizedPath);
@@ -546,9 +546,6 @@ bool CamuleApp::OnInit()
 	}
 
 #ifdef ENABLE_NLS
-	// Load localization settings
-	Localize_mule();
-
 	if (old_localedef) {
 		ShowAlert(_("Your locale has been changed to System Default due to a configuration change. Sorry."), _("Info"), wxCENTRE | wxOK | wxICON_ERROR);
 	}
@@ -576,10 +573,10 @@ bool CamuleApp::OnInit()
 #ifndef __WINDOWS__
 	if (getuid() == 0) {
 		wxString msg =
-			wxT("Warning! You are running wMule as root.\n")
-			wxT("Doing so is not recommended for security reasons,\n")
-			wxT("and you are advised to run wMule as an normal\n")
-			wxT("user instead.");
+			_("Warning! You are running wMule as root.\n")
+			+ _("Doing so is not recommended for security reasons,\n")
+			+ _("and you are advised to run wMule as a normal\n")
+			+ _("user instead.");
 
 		ShowAlert(msg, _("WARNING"), wxCENTRE | wxOK | wxICON_ERROR);
 
@@ -805,10 +802,10 @@ bool CamuleApp::ReinitializeNetwork(wxString* msg, bool forceUPnPRetry)
 		thePrefs::SetECPort( port );
 
 		wxString err =
-			wxT("Network configuration failed! You cannot use the same port\n")
-			wxT("for the main TCP port and the External Connections port.\n")
-			wxT("The EC port has been changed to avoid conflict, see the\n")
-			wxT("preferences for the new value.\n");
+			_("Network configuration failed! You cannot use the same port\n")
+			+ _("for the main TCP port and the External Connections port.\n")
+			+ _("The EC port has been changed to avoid conflict, see the\n")
+			+ _("preferences for the new value.\n");
 		*msg << err;
 
 		AddLogLineN(wxEmptyString );
@@ -827,11 +824,11 @@ bool CamuleApp::ReinitializeNetwork(wxString* msg, bool forceUPnPRetry)
 		thePrefs::SetUDPPort( port );
 
 		wxString err =
-			wxT("Network configuration failed! You set your UDP port to\n")
-			wxT("the value of the main TCP port plus 3.\n")
-			wxT("This port has been reserved for the Server-UDP port. The\n")
-			wxT("port value has been changed to avoid conflict, see the\n")
-			wxT("preferences for the new value\n");
+			_("Network configuration failed! You set your UDP port to\n")
+			+ _("the value of the main TCP port plus 3.\n")
+			+ _("This port has been reserved for the Server-UDP port. The\n")
+			+ _("port value has been changed to avoid conflict, see the\n")
+			+ _("preferences for the new value\n");
 		*msg << err;
 
 		AddLogLineN(wxEmptyString );
@@ -990,13 +987,13 @@ bool CamuleApp::ApplyCoreUPnP(bool forceRetry)
 		if (report.status == UPNP_LAST_OK || report.status == UPNP_LAST_DISABLED) {
 			AddLogLineN(FormatUPnPOperationSummary(report));
 		} else {
-			AddLogLineC(CFormat(wxT("WARNING: %s")) % FormatUPnPOperationSummary(report));
+			AddLogLineC(CFormat(_("WARNING: %s")) % FormatUPnPOperationSummary(report));
 		}
 		if (!report.lastError.IsEmpty() && report.status != UPNP_LAST_OK) {
 			AddLogLineCS(report.lastError);
 		}
 		if (report.status == UPNP_LAST_FAIL || report.status == UPNP_LAST_SUPPRESSED) {
-			AddLogLineCS(wxT("UPnP did not open the ports automatically. Configure manual forwarding on your router if connectivity is still blocked."));
+			AddLogLineCS(_("UPnP did not open the ports automatically. Configure manual forwarding on your router if connectivity is still blocked."));
 		}
 		success = (report.status == UPNP_LAST_OK);
 	} catch (CUPnPException& e) {
@@ -1198,18 +1195,18 @@ void CamuleApp::OnFatalException()
 {
 	/* Print the backtrace */
 	wxString msg;
-	msg	<< wxT("\n--------------------------------------------------------------------------------\n")
-		<< wxT("A fatal error has occurred and wMule has crashed.\n")
-		<< wxT("Please help us fix this problem by filing an issue on the wMule tracker:\n")
-		<< wxT("    https://github.com/wMule/wMule/issues\n")
-		<< wxT("Include as much information as possible regarding the\n")
-		<< wxT("circumstances of this crash and attach the backtrace below.\n\n")
-		<< wxT("----------------------------=| BACKTRACE FOLLOWS: |=----------------------------\n")
-		<< wxT("Current version is: ") << FullMuleVersion
-		<< wxT("\nRunning on: ") << OSDescription
-		<< wxT("\n\n")
+	msg	<< _("\n--------------------------------------------------------------------------------\n")
+		<< _("A fatal error has occurred and wMule has crashed.\n")
+		<< _("Please help us fix this problem by filing an issue on the wMule tracker:\n")
+		<< _("    https://github.com/wMule/wMule/issues\n")
+		<< _("Include as much information as possible regarding the\n")
+		<< _("circumstances of this crash and attach the backtrace below.\n\n")
+		<< _("----------------------------=| BACKTRACE FOLLOWS: |=----------------------------\n")
+		<< _("Current version is: ") << FullMuleVersion
+		<< _("\nRunning on: ") << OSDescription
+		<< _("\n\n")
 		<< get_backtrace(1) // 1 == skip this function.
-		<< wxT("\n--------------------------------------------------------------------------------\n");
+		<< _("\n--------------------------------------------------------------------------------\n");
 
 	theLogger.EmergencyLog(msg, true);
 }
@@ -1220,7 +1217,13 @@ void CamuleApp::OnFatalException()
 void CamuleApp::Localize_mule()
 {
 	InitCustomLanguages();
-	const wxString langPref = thePrefs::GetLanguageID();
+	wxString langPref;
+	if (wxConfigBase* cfg = wxConfigBase::Get()) {
+		cfg->Read(wxT("/eMule/Language"), &langPref, wxEmptyString);
+	}
+	if (langPref.IsEmpty()) {
+		langPref = thePrefs::GetLanguageID();
+	}
 	int langId = wxLANGUAGE_DEFAULT;
 	const wxLanguageInfo* resolvedInfo = nullptr;
 	if (!langPref.IsEmpty()) {
@@ -1500,13 +1503,13 @@ void CamuleApp::OnFinishedHashing(CHashingEvent& evt)
 
 		if (knownfiles->SafeAddKFile(result, true)) {
 			AddDebugLogLineN(logKnownFiles,
-				CFormat(wxT("Safe adding file to sharedlist: %s")) % result->GetFileName());
+				CFormat(_("Safe adding file to sharedlist: %s")) % result->GetFileName());
 			sharedfiles->SafeAddKFile(result);
 
 			bytecount += result->GetFileSize();
 			// If we have added files with a total size of ~3000mb
 			if (bytecount >= wxULL(3145728000)) {
-				AddDebugLogLineN(logKnownFiles, wxT("Failsafe for crash on file hashing creation"));
+				AddDebugLogLineN(logKnownFiles, _("Failsafe for crash on file hashing creation"));
 				if ( m_app_state != APP_STATE_SHUTTINGDOWN ) {
 					knownfiles->Save();
 					bytecount = 0;
@@ -1514,7 +1517,7 @@ void CamuleApp::OnFinishedHashing(CHashingEvent& evt)
 			}
 		} else {
 			AddDebugLogLineN(logKnownFiles,
-				CFormat(wxT("File not added to sharedlist: %s")) % result->GetFileName());
+				CFormat(_("File not added to sharedlist: %s")) % result->GetFileName());
 			delete result;
 		}
 	}
@@ -1596,12 +1599,12 @@ void CamuleApp::ShutDown()
 	PlatformSpecific::AllowSleepMode();
 
 	// Log
-	AddDebugLogLineN(logGeneral, wxT("CamuleApp::ShutDown() has started."));
+	AddDebugLogLineN(logGeneral, _("CamuleApp::ShutDown() has started."));
 
 	// Signal the hashing thread to terminate
 	m_app_state = APP_STATE_SHUTTINGDOWN;
 	Threading::ShutdownToken().Activate();
-	AddDebugLogLineN(logThreading, wxT("Thread shutdown token activated"));
+	AddDebugLogLineN(logThreading, _("Thread shutdown token activated"));
 	const std::chrono::milliseconds drainTimeout(thePrefs::GetThreadDrainTimeoutMs());
 	if (downloadqueue != nullptr) {
 		const uint16 fileCount = downloadqueue->GetFileCount();
@@ -1614,7 +1617,7 @@ void CamuleApp::ShutDown()
 
 	// Stop ASIO thread
 #ifdef ASIO_SOCKETS			// only needed to suppress the log message in non-Asio build
-	AddDebugLogLineN(logGeneral, wxT("Terminate ASIO thread."));
+	AddDebugLogLineN(logGeneral, _("Terminate ASIO thread."));
 	m_AsioService->Stop();
 #endif
 
@@ -1637,7 +1640,7 @@ void CamuleApp::ShutDown()
 	// Exit thread scheduler and upload thread
 	CThreadScheduler::Terminate();
 
-	AddDebugLogLineN(logGeneral, wxT("Terminate upload thread."));
+	AddDebugLogLineN(logGeneral, _("Terminate upload thread."));
 	uploadBandwidthThrottler->EndThread();
 
 	if (glob_prefs != nullptr) {
@@ -1688,7 +1691,7 @@ void CamuleApp::ShutDown()
 	}
 
 	// Log
-	AddDebugLogLineN(logGeneral, wxT("CamuleApp::ShutDown() has ended."));
+	AddDebugLogLineN(logGeneral, _("CamuleApp::ShutDown() has ended."));
 }
 
 
@@ -1854,7 +1857,7 @@ void CamuleApp::CheckNewVersion(uint32 result)
 			wxString versionLine = file.GetFirstLine();
 			wxStringTokenizer tkz(versionLine, wxT("."));
 
-			AddDebugLogLineN(logGeneral, wxString(wxT("Running: ")) + wxT(VERSION) + wxT(", Version check: ") + versionLine);
+			AddDebugLogLineN(logGeneral, CFormat(_("Running: %s, Version check: %s")) % wxT(VERSION) % versionLine);
 
 			long fields[] = {0, 0, 0};
 			for (int i = 0; i < 3; ++i) {
@@ -1891,7 +1894,7 @@ void CamuleApp::CheckNewVersion(uint32 result)
 		file.Close();
 		wxRemoveFile(filename);
 	} else {
-		AddLogLineN(wxT("WARNING: Failed to download the version check file"));
+		AddLogLineN(_("WARNING: Failed to download the version check file"));
 	}
 
 }
@@ -2152,9 +2155,9 @@ void CamuleApp::ShowConnectionState(bool forceUpdate)
 		if (changed_flags & CONNECTED_KAD_NOT) {
 			// cppcheck-suppress duplicateBranch
 			if (state & CONNECTED_KAD_NOT) {
-				AddLogLineN(wxT("Kad started."));
+				AddLogLineN(_("Kad started."));
 			} else {
-				AddLogLineN(wxT("Kad stopped."));
+				AddLogLineN(_("Kad stopped."));
 			}
 		}
 
@@ -2162,12 +2165,12 @@ void CamuleApp::ShowConnectionState(bool forceUpdate)
 			if (state & (CONNECTED_KAD_OK | CONNECTED_KAD_FIREWALLED)) {
 				// cppcheck-suppress duplicateBranch
 				if (state & CONNECTED_KAD_OK) {
-					AddLogLineN(wxT("Connected to Kad (ok)"));
+					AddLogLineN(_("Connected to Kad (ok)"));
 				} else {
-					AddLogLineN(wxT("WARNING: Connected to Kad (firewalled)"));
+					AddLogLineN(_("WARNING: Connected to Kad (firewalled)"));
 				}
 			} else {
-				AddLogLineN(wxT("Disconnected from Kad"));
+				AddLogLineN(_("Disconnected from Kad"));
 			}
 		}
 

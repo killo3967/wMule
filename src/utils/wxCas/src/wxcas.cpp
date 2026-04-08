@@ -60,7 +60,7 @@ namespace {
 			return true;
 		}
 
-		wxLogWarning(wxT("[i18n] Unable to load translation catalog for wxCas."));
+		wxLogWarning(_("[i18n] Unable to load translation catalog for wxCas."));
 		return false;
 	}
 }

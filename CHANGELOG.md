@@ -18,6 +18,18 @@ Reemplazar headers GPL largos (~24 líneas) por versión simplificada (~6 línea
 
 ---
 
+## [1.0.6] - 2026-04-08
+
+### i18n gettext simplificado
+- Se separó el flujo en dos scripts Python: `scripts/generate-pot.py` para regenerar `po/amule.pot` y `scripts/compile-translations.py` para compilar `.po` a `.mo` y sincronizarlos en `assets/locale`.
+- Se eliminó la capa experimental de IA local y la documentación quedó alineada con el pipeline gettext clásico.
+- Se añadió documentación de uso directo en `docs/i18n.md`.
+
+### Validaciones
+- `python -m py_compile scripts/generate-pot.py scripts/compile-translations.py scripts/po2mo.py`
+- `python scripts/generate-pot.py --help`
+- `python scripts/compile-translations.py --help`
+
 ## [1.0.5] - 2026-04-07
 
 ### Fase 5 – Async Incremental

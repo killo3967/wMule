@@ -118,27 +118,27 @@ int CamulewebApp::OnRun()
 
 bool CamulewebApp::CheckDirForTemplate(wxString& dir, const wxString& tmpl)
 {
-	DebugShow(wxT("checking for directory '") + dir + wxT("'..."));
+	DebugShow(_("checking for directory '") + dir + _("'..."));
 	if (wxFileName::DirExists(dir)) {
-		DebugShow(wxT(" yes\n"));
+		DebugShow(_(" yes\n"));
 		dir = JoinPaths(dir, tmpl);
-		DebugShow(wxT("checking for directory '") + dir + wxT("'..."));
+		DebugShow(_("checking for directory '") + dir + _("'..."));
 		if (wxFileName::DirExists(dir)) {
-			DebugShow(wxT(" yes\n"));
+			DebugShow(_(" yes\n"));
 			wxString tmplPath = JoinPaths(dir, wxT("login.php"));
-			DebugShow(wxT("checking for file '") + tmplPath + wxT("'..."));
+			DebugShow(_("checking for file '") + tmplPath + _("'..."));
 			if (wxFileName::FileExists(tmplPath)) {
-				DebugShow(wxT(" yes\n"));
+				DebugShow(_(" yes\n"));
 				// dir is already set to the directory component of the template path
 				return true;
 			} else {
-				DebugShow(wxT(" no\n"));
+				DebugShow(_(" no\n"));
 			}
 		} else {
-			DebugShow(wxT(" no\n"));
+			DebugShow(_(" no\n"));
 		}
 	} else {
-		DebugShow(wxT(" no\n"));
+		DebugShow(_(" no\n"));
 	}
 
 	return false;
@@ -150,7 +150,7 @@ bool CamulewebApp::GetTemplateDir(const wxString& templateName, wxString& templa
 	wxString dir;
 	m_localTemplate = false;
 
-	DebugShow(wxT("looking for template: ") + templateName + wxT("\n"));
+	DebugShow(_("looking for template: ") + templateName + _("\n"));
 
 #ifdef __WXMAC__
 	CFURLRef amuleBundleUrl;
@@ -223,7 +223,7 @@ bool CamulewebApp::GetTemplateDir(const wxString& templateName, wxString& templa
 	if ( templateName == defaultTemplateName ) {
 		return false;
 	}
-	Show(wxT("Template ") + templateName + wxT(" not found, reverting to default\n\n"));
+	Show(_("Template ") + templateName + _(" not found, reverting to default\n\n"));
 	return GetTemplateDir(defaultTemplateName, templateDir);
 }
 
@@ -252,7 +252,7 @@ void CamulewebApp::OnInitCmdLine(wxCmdLineParser& amuleweb_parser)
 		wxCMD_LINE_PARAM_OPTIONAL);
 
 	amuleweb_parser.AddSwitch(wxT("Z"), wxT("disable-gzip"),
-		wxT("Do not use gzip compression"),
+		_("Do not use gzip compression"),
 		wxCMD_LINE_PARAM_OPTIONAL);
 
 	amuleweb_parser.AddOption(wxT("A"), wxT("admin-pass"),
@@ -303,8 +303,7 @@ bool CamulewebApp::OnCmdLineParsed(wxCmdLineParser& parser)
 	if (parser.Found(wxT("amule-config-file"), &wMuleConfigFile)) {
 		aMuleConfigFile = FinalizeFilename(aMuleConfigFile);
 		if (!::wxFileExists(aMuleConfigFile)) {
-			fprintf(stderr, "FATAL ERROR: file '%s' does not exist.\n",
-				(const char*)unicode2char(aMuleConfigFile));
+			fprintf(stderr, "%s", (const char*)unicode2char(CFormat(_("FATAL ERROR: file '%s' does not exist.\n")) % aMuleConfigFile));
 			return false;
 		}
 		CECFileConfig cfg(aMuleConfigFile);
@@ -317,8 +316,7 @@ bool CamulewebApp::OnCmdLineParsed(wxCmdLineParser& parser)
 
 		if (!(m_TemplateOk = GetTemplateDir(m_TemplateName, m_TemplateDir))) {
 			// no reason to run webserver without a template
-			fprintf(stderr, "FATAL ERROR: Cannot find template: %s\n",
-				(const char *)unicode2char(m_TemplateName));
+			fprintf(stderr, "%s", (const char*)unicode2char(CFormat(_("FATAL ERROR: Cannot find template: %s\n")) % m_TemplateName));
 			return false;
 		}
 		return true;
@@ -326,7 +324,7 @@ bool CamulewebApp::OnCmdLineParsed(wxCmdLineParser& parser)
 
 	if (CaMuleExternalConnector::OnCmdLineParsed(parser)) {
 		if ( parser.Found(wxT("no-php")) ) {
-			fprintf(stderr, "WARNING: --no-php switch have no effect. Long live PHP\n");
+			fprintf(stderr, "%s", (const char*)unicode2char(_("WARNING: --no-php switch has no effect. Long live PHP\n")));
 		}
 
 		parser.Found(wxT("template"), &m_TemplateName);
@@ -335,8 +333,7 @@ bool CamulewebApp::OnCmdLineParsed(wxCmdLineParser& parser)
 		}
 		if (!(m_TemplateOk = GetTemplateDir(m_TemplateName, m_TemplateDir))) {
 			// no reason to run webserver without a template
-			fprintf(stderr, "FATAL ERROR: Cannot find template: %s\n",
-				(const char *)unicode2char(m_TemplateName));
+			fprintf(stderr, "%s", (const char*)unicode2char(CFormat(_("FATAL ERROR: Cannot find template: %s\n")) % m_TemplateName));
 			return true;
 		}
 
@@ -540,7 +537,7 @@ wxString CamulewebApp::SetLocale(const wxString& language)
 	// SetLocale() may indeed return an empty string, when no locale has been selected yet and
 	// no locale change was requested, or, in the worst case, if the last locale change didn't succeed.
 	if (!lang.IsEmpty()) {
-		DebugShow(wxT("*** Language set to: ") + lang + wxT(" ***\n"));
+		DebugShow(_("*** Language set to: ") + lang + _(" ***\n"));
 #ifdef ENABLE_NLS
 		wxString domain = wxT("amuleweb-") + m_TemplateName;
 		Unicode2CharBuf domainBuf = unicode2char(domain);
@@ -551,11 +548,11 @@ wxString CamulewebApp::SetLocale(const wxString& language)
 		wxString dir;
 		if (m_localTemplate) {
 			dir = JoinPaths(JoinPaths(JoinPaths(m_configDir, wxT("webserver")), m_TemplateName), wxT("locale"));
-			DebugShow(wxT("looking for message catalogs in ") + dir + wxT("... "));
+			DebugShow(_("looking for message catalogs in ") + dir + _("... "));
 		}
 		if (!m_localTemplate || !DirHasMessageCatalog(dir, lang, domain)) {
 			if (m_localTemplate) {
-				DebugShow(wxT("no\n"));
+				DebugShow(_("no\n"));
 			}
 #if defined __WXMAC__ || defined __WINDOWS__
 			// on Mac, the bundle may be tried, too
@@ -563,15 +560,15 @@ wxString CamulewebApp::SetLocale(const wxString& language)
 #elif defined(__UNIX__)
 			dir = JoinPaths(static_cast<wxStandardPaths&>(wxStandardPaths::Get()).GetInstallPrefix(), JoinPaths(wxT("share"), wxT("locale")));
 #endif
-			DebugShow(wxT("looking for message catalogs in ") + dir + wxT("... "));
+			DebugShow(_("looking for message catalogs in ") + dir + _("... "));
 			if (!DirHasMessageCatalog(dir, lang, domain)) {
-				DebugShow(wxT("no\n"));
+				DebugShow(_("no\n"));
 				dir = wxEmptyString;
 			} else {
-				DebugShow(wxT("yes\n"));
+				DebugShow(_("yes\n"));
 			}
 		} else {
-			DebugShow(wxT("yes\n"));
+			DebugShow(_("yes\n"));
 		}
 		// If we found something, then use it otherwise it may still be present at the system default location
 		if (!dir.IsEmpty()) {
