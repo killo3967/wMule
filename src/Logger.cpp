@@ -24,7 +24,6 @@
 
 #include "Logger.h"
 #include "amule.h"
-#include "Preferences.h"
 #include <common/Macros.h>
 #include <common/MacrosProgramSpecific.h>
 #include <sstream>
@@ -32,10 +31,27 @@
 #include <wx/wfstream.h>
 #include <wx/sstream.h>
 #include <wx/filename.h>
+#include <wx/datetime.h>
+#include <wx/thread.h>
+#include <wx/intl.h>
 
 namespace {
 
 const wxChar* PERSISTENT_DEFAULT_SEPARATOR = wxT(";");
+
+class NullLogPreferencesView : public ILogPreferencesView
+{
+public:
+	bool IsVerboseLoggingEnabled() const override { return false; }
+	bool ShouldForceVerboseLogfileOnly() const override { return false; }
+};
+
+const NullLogPreferencesView g_nullLogPreferencesView;
+
+const ILogPreferencesView& ResolveLogPreferences(const ILogPreferencesView* view)
+{
+	return view ? *view : g_nullLogPreferencesView;
+}
 
 wxString DetermineLogLevelLabel(bool critical, const wxString& message)
 {
@@ -181,7 +197,8 @@ bool CLogger::IsEnabled( DebugType type ) const
 		const CDebugCategory& cat = g_debugcats[ index ];
 		wxASSERT( type == cat.GetType() );
 
-		return ( cat.IsEnabled() && thePrefs::GetVerbose() );
+		const ILogPreferencesView& prefs = ResolveLogPreferences(m_preferencesView);
+		return ( cat.IsEnabled() && prefs.IsVerboseLoggingEnabled() );
 	}
 
 	wxFAIL;
@@ -211,6 +228,12 @@ void CLogger::ConfigurePersistentOutput(const wxString& separator)
 }
 
 
+void CLogger::SetPreferencesView(const ILogPreferencesView* view)
+{
+	m_preferencesView = view;
+}
+
+
 void CLogger::AddLogLine(
 	const wxString& file,
 	int line,
@@ -220,6 +243,7 @@ void CLogger::AddLogLine(
 	bool toStdout,
 	bool toGUI)
 {
+	const ILogPreferencesView& prefs = ResolveLogPreferences(m_preferencesView);
 	wxString msg(str);
 	wxString category;
 	const wxString level = DetermineLogLevelLabel(critical, msg);
@@ -228,7 +252,7 @@ void CLogger::AddLogLine(
 		if (!critical && !IsEnabled(type)) {
 			return;
 		}
-		if (!critical && thePrefs::GetVerboseLogfile()) {
+		if (!critical && prefs.ShouldForceVerboseLogfileOnly()) {
 			// print non critical debug messages only to the logfile
 			toGUI = false;
 		}
@@ -264,7 +288,8 @@ void CLogger::AddLogLine(
 	DebugType type,
 	const std::ostringstream &msg)
 {
-	AddLogLine(file, line, critical, type, wxString(char2unicode(msg.str().c_str())));
+	const std::string message = msg.str();
+	AddLogLine(file, line, critical, type, wxString::FromUTF8(message.c_str()));
 }
 
 
@@ -379,7 +404,8 @@ void CLogger::DoLine(const wxString & persistentLine, const wxString & guiLine, 
 
 		// write to Stdout
 		if (m_StdoutLog || toStdout) {
-			printf("%s", (const char*)unicode2char(persistentLine));
+			const wxCharBuffer utf8 = persistentLine.ToUTF8();
+			printf("%s", utf8.data());
 		}
 	}
 #ifndef AMULE_DAEMON
@@ -393,7 +419,8 @@ void CLogger::DoLine(const wxString & persistentLine, const wxString & guiLine, 
 
 void CLogger::EmergencyLog(const wxString &message, bool closeLog)
 {
-	fprintf(stderr, "%s", (const char*)unicode2char(message));
+	const wxCharBuffer utf8 = message.ToUTF8();
+	fprintf(stderr, "%s", utf8.data());
 	m_ApplogBuf += message;
 	FlushApplog();
 	if (closeLog && applog) {

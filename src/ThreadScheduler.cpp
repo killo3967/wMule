@@ -294,8 +294,15 @@ void* CThreadScheduler::Entry()
 			}
 
 			if (m_tasks.empty() && m_activeTasks == 0) {
-				AddDebugLogLineN(logThreads, wxT("No more tasks, stopping"));
-				break;
+				// Allow late follow-up tasks (for example, completion tasks posted from
+				// the GUI event queue after a hashing task finishes) a brief window to
+				// arrive before we shut the scheduler down.
+				const wxCondError waitResult = s_taskEvent.WaitTimeout(100);
+				if (waitResult == wxCOND_TIMEOUT && m_tasks.empty() && m_activeTasks == 0) {
+					AddDebugLogLineN(logThreads, wxT("No more tasks, stopping"));
+					break;
+				}
+				continue;
 			}
 
 			if (!m_tasks.empty()) {
