@@ -312,6 +312,7 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 ### Notas / incidencias
 - 2026-05-03: primera tanda crítica de Fase 7.1 centrada en EC auth/handshake; segunda tanda 7.2 centrada en `KadPacketGuards`; tercera tanda 7.3 centrada en rutas/config con `Path.*`; cuarta tanda 7.4 centrada en `ThreadingShutdownTest` sobre `PartFileAsyncGate`/`ThreadShutdownToken`. Se mantienen los tests de caracterización y no se ha tocado wire format ni comportamiento productivo.
 - 2026-05-03: la workflow de Windows CI está preparada y alineada con `scripts/validate-local.ps1`, pero la ejecución remota en GitHub Actions sigue pendiente de confirmación; en esta sesión no se pudo consultar `gh` por falta de autenticación.
+- 2026-05-03: tras validar la ejecución real, se corrigió el workflow para clonar `vcpkg` en el runner, porque `deps/vcpkg` es un gitlink local sin metadata de submodule utilizable en GitHub Actions.
 
 ---
 

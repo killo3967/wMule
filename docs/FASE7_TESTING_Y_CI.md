@@ -66,6 +66,7 @@ El script ayuda a repetir la validación, pero no sustituye el criterio de cierr
 - No cubre todavía Release, análisis estático ni sanitizers.
 - Aún no hay ejecución confirmada en GitHub Actions; la viabilidad se ha validado localmente con el mismo flujo.
 - En esta sesión no se pudo consultar el estado remoto porque `gh` requiere autenticación en este entorno.
+- El workflow necesita clonar `vcpkg` en el runner porque `deps/vcpkg` es un gitlink local no utilizable tal cual en Actions.
 
 ## Cobertura actual conocida
 

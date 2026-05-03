@@ -18,6 +18,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Ensure vcpkg is available
+        run: |
+          if (-not (Test-Path "${{ github.workspace }}\deps\vcpkg\bootstrap-vcpkg.bat")) {
+            if (Test-Path "${{ github.workspace }}\deps\vcpkg") {
+              Remove-Item -Recurse -Force "${{ github.workspace }}\deps\vcpkg"
+            }
+
+            git clone --depth 1 https://github.com/microsoft/vcpkg "${{ github.workspace }}\deps\vcpkg"
+          }
+
       - name: Bootstrap vcpkg
         run: |
           & "${{ github.workspace }}\deps\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
