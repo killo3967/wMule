@@ -36,6 +36,7 @@
 
 ### Nota de mantenimiento
 - 2026-04-08: se simplificó el flujo gettext en scripts Python dedicados (`generate-pot.py` y `compile-translations.py`) y se retiró el experimento de IA local.
+- 2026-04-09: se corrigió la carrera que dejaba algunas descargas atascadas al 99,9%/verde; el flujo de completado vuelve a ejecutar `CCompletionTask` y finalizar en `CompleteFileEnded(error=0)`.
 
 ---
 
@@ -48,8 +49,8 @@
 | 2 | Rutas y configuración *(ver anexo de fases completadas)* | Sanitización de archivos y EC endurecido |
 | 3 | Robustez x64 *(ver anexo de fases completadas)* | Sin truncaciones ni desbordes dependientes de plataforma |
 | 4 | Concurrencia segura | Threading estable, ownership claro |
-| 5 | Async incremental | Migración controlada a AsyncSocket con métricas |
-| 6 | Refactor arquitectónico | Core desacoplado de GUI/wxWidgets |
+| 5 | Async incremental *(ver anexo de fases completadas)* | Migración controlada a AsyncSocket con métricas |
+| 6 | Auditoría y refactor arquitectónico incremental | Core desacoplado de GUI/wxWidgets |
 | 7 | Calidad y CI | Pipeline Windows estable, cobertura ampliada |
 | 8 | Evolución futura | Base lista para REST, GUI nueva o migración parcial |
 
@@ -59,7 +60,7 @@
 
 - **Identificador**: `BT-EC-PBgRPC`
 - **Estado**: `[ ] Pendiente`
-- **Ventana recomendada**: iniciar auditoría y modelado durante Fase 3; ejecutar extracción de seams, infraestructura mínima y validación paralela en coordinación con Fase 6 y Fase 7.
+- **Ventana recomendada**: la auditoría y el modelado se exploraron durante Fase 3; la extracción de seams y el soporte arquitectónico se trabajaron en Fase 6; el tramo de infraestructura mínima y validación paralela sigue pendiente y, si se retoma, debe coordinarse con Fase 7 sin romper EC v2.
 - **Resultado esperado**: inventario técnico/funcional completo de EC v2 basado en código real, matriz de equivalencia EC v2 → PBgRPC, prototipo funcional de `PBgRPC` coexistiendo con EC v2 y cliente `wmulecmdv2` para validación paralela sin romper `wmulecmd.exe`, `amuleweb` ni integraciones existentes.
 
 ### Título
@@ -111,20 +112,27 @@ No incluye en este bloque:
 - [ ] Registrar `ed2k://` como protocolo asociado a `wmule.exe` en Windows y evaluar si además conviene auto-detectar enlaces del portapapeles para igualar el flujo rápido de eMule.
 - [ ] Generar un inventario funcional/técnico de EC v2 **basado en código real**, con nota explícita de discrepancias entre documentación y comportamiento observado.
 
-#### BT-EC.2 – Preservación explícita y pruebas de no regresión sobre EC v2
+#### BT-EC.2 – Auditoría de seams y fronteras de integración
+- [ ] Identificar seams reutilizables descubiertos por Fase 6 para control remoto, configuración, logging, filesystem y sockets.
+- [ ] Mapear qué comandos, eventos y rutas EC pueden atravesar esos seams sin depender del switch monolítico del core.
+- [ ] Priorizar seams necesarios para la primera infraestructura PBgRPC y marcar los diferidos.
+- [ ] Registrar dependencias de control remoto hacia `theApp`, `thePrefs` y otros estados globales que deban desaparecer detrás de adaptadores.
+- [ ] Documentar qué partes del inventario EC v2 quedan listas para reuso y cuáles requieren extracción adicional antes de exponerlas a PBgRPC.
+
+#### BT-EC.3 – Preservación explícita y pruebas de no regresión sobre EC v2
 - [ ] Declarar EC v2 como protocolo soportado durante toda la transición; no se desmonta, no se elimina y no se sustituye prematuramente.
 - [ ] Definir una batería de regresión específica para `wmulecmd.exe`, `amuleweb` y flujos EC críticos antes de introducir PBgRPC.
 - [ ] Aislar cambios en `ExternalConn`, `RemoteConnect`, `libec` y adaptadores para evitar contaminación cruzada con el nuevo stack.
 - [ ] Introducir instrumentación/telemetría mínima de uso de opcodes y rutas de notificación, sin alterar el wire format existente.
 - [ ] Definir el criterio exacto de retirada futura de EC v2 (ver condición de salida al final del bloque) y prohibir el deprecation por intuición o por documentación incompleta.
 
-#### BT-EC.3 – Modelado de equivalencias EC v2 → PBgRPC
+#### BT-EC.4 – Modelado de equivalencias EC v2 → PBgRPC
 - [ ] Construir una matriz de equivalencia que relacione opcodes, tags, eventos y semánticas de EC v2 con servicios, RPCs, mensajes y streams de PBgRPC.
 - [ ] Marcar explícitamente gaps funcionales, ambigüedades semánticas, dependencias internas y decisiones de mapeo que requieran extracción de seams en el core.
 - [ ] Separar en la matriz: operaciones request/response, eventos push, suscripciones, cambios de estado, errores y metadatos de compatibilidad/versionado.
 - [ ] Identificar capacidades mínimas obligatorias para la primera iteración de PBgRPC y capacidades diferidas para iteraciones posteriores.
 
-#### BT-EC.4 – Diseño formal de PBgRPC
+#### BT-EC.5 – Diseño formal de PBgRPC
 - [ ] Definir el contrato formal de `proto` para servicios, mensajes, enums, errores y metadatos de versión.
 - [ ] Diseñar RPCs síncronas equivalentes a las operaciones EC críticas y streams de servidor equivalentes a los eventos/notificaciones asíncronas.
 - [ ] Establecer separación limpia entre servicios de control, estado, colas, búsquedas, servidores/redes, preferencias y eventos.
@@ -132,20 +140,20 @@ No incluye en este bloque:
 - [ ] Definir versionado de contrato, compatibilidad evolutiva, manejo de campos opcionales y política de backward/forward compatibility.
 - [ ] Diseñar PBgRPC orientado a que wMule pueda evolucionar hacia un core desacoplado con GUI externa y a que exista un adaptador MCP por encima del nuevo protocolo sin exponer internals legacy.
 
-#### BT-EC.5 – Infraestructura mínima en paralelo
+#### BT-EC.6 – Infraestructura mínima en paralelo
 - [ ] Introducir seams internos para reutilizar operaciones del core sin pasar por el switch monolítico de EC en cada nueva integración.
 - [ ] Implementar un listener/host PBgRPC **en paralelo**, con puerto/configuración independientes de EC v2.
 - [ ] Mantener el listener EC actual intacto salvo cambios defensivos, métricas o adaptaciones internas estrictamente necesarias para compartir servicios.
 - [ ] Añadir trazas y métricas para comparar cobertura funcional, latencia, errores y uso de ambos canales durante la convivencia.
 
-#### BT-EC.6 – Clonado de `wmulecmd` a `wmulecmdv2`
+#### BT-EC.7 – Clonado de `wmulecmd` a `wmulecmdv2`
 - [ ] Clonar la base de `wmulecmd` a un nuevo binario/target `wmulecmdv2` sin modificar el comportamiento del cliente legacy.
 - [ ] Separar el código común reutilizable (parsing CLI, formato de salida, utilidades) del transporte/protocolo para evitar contaminación entre EC v2 y PBgRPC.
 - [ ] Implementar una batería mínima inicial de comandos sobre PBgRPC: estado básico, conectar/desconectar, cola de descargas, cola de subidas, pausa/reanudación/cancelación, añadir enlace, búsqueda básica/resultados y logging/diagnóstico mínimo.
 - [ ] Añadir comparativas funcionales EC v2 vs PBgRPC para cada comando soportado por `wmulecmdv2` antes de ampliar cobertura.
 - [ ] Definir cobertura mínima obligatoria antes de crecer el cliente: no ampliar comandos sin haber cerrado equivalencia y pruebas del subconjunto ya soportado.
 
-#### BT-EC.7 – Validación paralela y decisión de migración
+#### BT-EC.8 – Validación paralela y decisión de migración
 - [ ] Ejecutar pruebas paralelas `wmulecmd` (EC v2) vs `wmulecmdv2` (PBgRPC) sobre escenarios equivalentes y datasets comparables.
 - [ ] Validar que los eventos y estados observables entregados por PBgRPC reproducen correctamente el comportamiento funcional de EC v2 o lo mejoran sin pérdida de información necesaria.
 - [ ] Documentar diferencias aceptadas, gaps pendientes y bloqueos que impidan migraciones mayores.
@@ -154,7 +162,7 @@ No incluye en este bloque:
 ### Dependencias
 
 - **Entrada mínima**: Fase 2 completada, porque el endurecimiento previo de configuración remota y credenciales EC deja una base más segura para auditar el comportamiento actual.
-- **Dependencia fuerte para diseño/implementación**: avances de Fase 6 para extraer seams internos y reducir el acoplamiento directo del protocolo remoto con `theApp`, `thePrefs` y estructuras monolíticas.
+- **Dependencia fuerte para diseño/implementación**: avances de Fase 6 en auditoría arquitectónica y extracción de seams internos para reducir el acoplamiento directo del protocolo remoto con `theApp`, `thePrefs` y estructuras monolíticas.
 - **Dependencia fuerte para validación sostenida**: Fase 7 o, como mínimo, un subconjunto operativo de su infraestructura de pruebas/automatización para ejecutar regresión paralela EC v2 vs PBgRPC.
 - **Dependencia técnica transversal**: cualquier cambio de serialización, tipos o tamaños derivado de Fase 3 debe reflejarse tanto en la auditoría de EC v2 como en los contratos iniciales de PBgRPC.
 
@@ -239,112 +247,34 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 
 ---
 
-> **Nota**: Las fases completadas (Fase 0, Fase 1, Fase 2, Fase 3 y Fase 4) se trasladaron a `docs/PLAN_MODERNIZACION_COMPLETADO.md` para mantener este documento enfocado en el trabajo activo.
+> **Nota**: Las fases completadas (Fase 0, Fase 1, Fase 2, Fase 3, Fase 4, Fase 5 y Fase 6) se trasladaron a `docs/PLAN_MODERNIZACION_COMPLETADO.md` para mantener este documento enfocado en el trabajo activo.
 
 ---
 
-## Fase 5 – Async Incremental
+## Fase 6 – Auditoría y Refactor Arquitectónico Incremental (archivada)
 
-**Objetivo**: Migrar gradualmente flujos a AsyncSocket con métricas y control.
+**Estado**: `[x] Completada (2026-05-02)`
 
-### Tareas
-- [x] Diseñar la migración de `LibSocketAsio` fuera de las APIs de Boost.Asio deprecadas (`deadline_timer`, `null_buffers`, `io_context::strand::wrap`), definiendo cómo y cuándo adoptar `basic_waitable_timer`/`bind_executor` dentro del alcance de esta fase.
-- [x] Elegir flujo crítico acotado (p.ej. lecturas en `ClientTCPSocket`), usando la ruta piloto `StartBackgroundRead()` → `DispatchBackgroundRead()` → `HandleRead()`.
-- [x] Integrar el flujo con límites, timeouts y backpressure conservando el modelo de un solo envío/lectura en vuelo y el timer de gracia.
-- [x] Añadir telemetría/métricas para latencia y throughput.
-- [x] Comparar resultados con benchmarks existentes (`ThreadPoolBenchmark`, `DownloadBenchmark`).
-- [x] Documentar fallback/no regression path.
+**Resumen**: La Fase 6 cerró de forma conservadora. El detalle completo está en `docs/PLAN_MODERNIZACION_COMPLETADO.md`. Se consolidó la auditoría arquitectónica, se definieron fronteras lógicas y reglas de dependencia, se redujo acoplamiento a `thePrefs`/`theApp` en múltiples seams read-only, y se movieron helpers puros a `src/libs/common/` como piloto físico incremental. No se ha producido una separación total GUI/Core ni una reestructuración amplia de carpetas; eso queda como objetivo evolutivo futuro.
 
-### Validación durante la fase
-- Ejecutar benchmarks tras cada iteración significativa.
-- Tests funcionales del flujo migrado.
+### Cierre documental
+- 6.0: completada.
+- 6.1: completada y documentada en `docs/FASE6_FRONTERAS_Y_DEPENDENCIAS.md`.
+- 6.2: completada.
+- 6.3: completada para esta fase mediante extracción incremental suficiente de helpers reutilizables.
+- 6.4: completada como reorganización física conservadora.
 
 ### Validación obligatoria al cierre
-- [x] `cmake --build . --config Debug`
-- [x] `ctest --output-on-failure -C Debug`
+- [x] `cmake --build . --config Debug` (28/28 tests verdes)
+- [x] `ctest --output-on-failure -C Debug` (28/28)
 - [x] Verificación básica de `wmule.exe`
 - [x] Verificación básica de `wmulecmd.exe`
 - [x] Actualizar estado/documentación
 
-### Exit criteria
-- 1-2 rutas migradas y estables.
-- Métricas objetivas antes/después.
-- Sin regresiones funcionales.
-
-### Estado
-- Estado actual: `[x] Completada (2026-04-07)`
-
-### Notas / incidencias
-- Ruta piloto priorizada: `StartBackgroundRead()` → `DispatchBackgroundRead()` → `HandleRead()` en `src/LibSocketAsio.cpp`.
-- `src/LibSocketAsio.cpp` ya quedó migrado a `steady_timer`, `bind_executor`, `async_wait(wait_read)` y lambdas; no quedan usos de `deadline_timer`, `null_buffers`, `strand::wrap` ni `boost::bind` en ese archivo.
-- Telemetría mínima añadida en TCP/UDP para latencia/throughput por socket; logs de cierre reportan operaciones, bytes y medias.
-- Benchmarks comparativos ejecutados manualmente: `ThreadPoolBenchmark` y `DownloadBenchmark` (ver salida de consola) y también vía `ctest`.
-- Fallback/no-regression: se mantiene intacta la ruta síncrona (`m_sync`) y el adaptador `LibSocketWX` como vía legacy; no hubo cambios de wire format.
-- Validación ejecutada: `cmake --build . --config Debug`, `ctest --output-on-failure -C Debug`, `ThreadPoolBenchmark.exe`, `DownloadBenchmark.exe` (todos correctos).
-
-### Plan de migración incremental (ruta piloto)
-
-1. **Aislar la serialización moderna**
-   - Sustituir `m_strand.wrap(...)` por `bind_executor(make_strand(...), ...)` en handlers del flujo piloto.
-   - Mantener todo el ciclo de lectura/escritura/timer dentro del mismo executor.
-
-2. **Reemplazar el hack de lectura diferida**
-   - Cambiar `null_buffers()` por un mecanismo moderno equivalente (`async_wait(wait_read)` o lectura real según el caso).
-   - Preservar la semántica observable de `CoreNotify_LibSocketReceive`.
-
-3. **Modernizar el timer de gracia**
-   - Migrar `deadline_timer` a `steady_timer` o `basic_waitable_timer<std::chrono::steady_clock>`.
-   - Verificar que la destrucción siga retrasándose lo suficiente para evitar callbacks colgados.
-
-4. **Endurecer lifetime y callbacks**
-   - Evitar handlers con `this` crudo en la ruta piloto.
-   - Usar captura segura con ownership explícito para impedir use-after-free.
-
-5. **Validar antes de ampliar alcance**
-   - Medir latencia/throughput del flujo migrado.
-   - Confirmar que no hay regresiones funcionales antes de tocar UDP o el listener server.
-
----
-
-## Fase 6 – Refactor Arquitectónico
-
-**Objetivo**: Reorganizar el código para reducir acoplamiento y preparar evoluciones.
-
-### Tareas
-#### 6.1 Modularización
-- [ ] Reorganizar en `core/`, `protocol/`, `network/`, `storage/`, `gui/`.
-- [ ] Definir interfaces para config, logging, sockets, filesystem.
-
-#### 6.2 Desacoplar GUI/Core
-- [ ] Evitar incluir wxWidgets en el core salvo adaptadores específicos.
-- [ ] Preparar core para futuras GUIs/servicios.
-
-#### 6.3 Deuda técnica
-- [ ] Eliminar duplicados (ej. `SortProc`).
-- [ ] Unificar utilidades comunes.
-- [ ] Documentar dependencias cruzadas.
-
-### Validación durante la fase
-- Compilar targets modulares tras cada reorganización.
-- Ejecutar tests relevantes para módulos tocados.
-
-### Validación obligatoria al cierre
-- [ ] `cmake --build . --config Debug`
-- [ ] `ctest --output-on-failure -C Debug`
-- [ ] Verificación básica de `wmule.exe`
-- [ ] Verificación básica de `wmulecmd.exe`
-- [ ] Actualizar estado/documentación
-
-### Exit criteria
-- Core compilable con dependencias mínimas.
-- Límites claros entre módulos.
-- Documentación y diagramas actualizados.
-
-### Estado
-- Estado actual: `[ ] Pendiente`
-
-### Notas / incidencias
-- Ninguna.
+### Notas
+- Piloto físico mínimo: `KeywordTokenizer.h` y `StringSplit.h` quedaron en `src/libs/common/` como helpers puros compartidos.
+- El árbol sigue siendo un monolito modular en transición.
+- La separación total GUI/Core y la creación de carpetas por capa permanecen condicionadas a futura extracción real de seams.
 
 ---
 
@@ -377,10 +307,11 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 - Análisis estático integrado en el flujo.
 
 ### Estado
-- Estado actual: `[ ] Pendiente`
+- Estado actual: `[ ] Pendiente` (Fase 7.1, 7.2, 7.3 y 7.4 iniciadas: EC auth/handshake + parsing hostil Kad/eD2K + rutas/config + concurrencia/shutdown, sin cerrar fase)
 
 ### Notas / incidencias
-- Ninguna.
+- 2026-05-03: primera tanda crítica de Fase 7.1 centrada en EC auth/handshake; segunda tanda 7.2 centrada en `KadPacketGuards`; tercera tanda 7.3 centrada en rutas/config con `Path.*`; cuarta tanda 7.4 centrada en `ThreadingShutdownTest` sobre `PartFileAsyncGate`/`ThreadShutdownToken`. Se mantienen los tests de caracterización y no se ha tocado wire format ni comportamiento productivo.
+- 2026-05-03: la workflow de Windows CI está preparada y alineada con `scripts/validate-local.ps1`, pero la ejecución remota en GitHub Actions sigue pendiente de confirmación; en esta sesión no se pudo consultar `gh` por falta de autenticación.
 
 ---
 
@@ -428,9 +359,9 @@ EC v2 **solo podrá plantearse como retirado o deprecado** cuando se cumplan sim
 
 ## Próximos Pasos Inmediatos
 
-1. Iniciar `BT-EC-PBgRPC` por **BT-EC.1**: auditar el stack EC v2 a partir de `src/ExternalConn.cpp`, `src/libs/ec/cpp/*`, `src/ExternalConnector.cpp`, `src/TextClient.cpp` y `src/webserver/src/WebServer.cpp`, dejando constancia explícita de divergencias entre documentación y código.
-2. Preparar la matriz de equivalencia EC v2 → PBgRPC antes de tocar wire formats, listeners o clientes existentes.
-3. Definir el clonado controlado de `wmulecmd` a `wmulecmdv2` como target independiente para validar PBgRPC sin riesgo sobre `wmulecmd.exe`.
+1. Iniciar la **Fase 7 – Calidad, Tests y CI**: extender MuleUnit con casos de seguridad, rutas y concurrencia.
+2. Configurar CI Windows y políticas de calidad: build + `ctest` en cada PR/merge, warnings críticos tratados y validación recurrente de `wmule.exe`/`wmulecmd.exe`.
+3. Mantener `BT-EC-PBgRPC` como bloque transversal pendiente y **no** como implementación activa.
 4. Mantener la disciplina de validación del plan: actualizar este documento y la documentación complementaria al cerrar cada subfase parcial con evidencias de pruebas y compatibilidad.
 
 ---
