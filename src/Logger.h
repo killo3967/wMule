@@ -27,7 +27,17 @@
 
 #include <wx/log.h>
 #include <wx/event.h>
+#include <wx/string.h>
 #include <iosfwd>
+
+
+class ILogPreferencesView
+{
+public:
+	virtual ~ILogPreferencesView() {}
+	virtual bool IsVerboseLoggingEnabled() const = 0;
+	virtual bool ShouldForceVerboseLogfileOnly() const = 0;
+};
 
 
 enum DebugType
@@ -201,6 +211,7 @@ public:
 	void SetEnabledStdoutLog(bool enabled)	{ m_StdoutLog = enabled; }
 
 	void ConfigurePersistentOutput(const wxString& separator);
+	void SetPreferencesView(const ILogPreferencesView* view);
 
 
 	/**
@@ -286,6 +297,7 @@ public:
 		m_StdoutLog = false;
 		m_persistentSeparator = wxT(";");
 		m_count = 0;
+		m_preferencesView = nullptr;
 	}
 
 private:
@@ -296,6 +308,7 @@ private:
 	bool m_StdoutLog;
 	int  m_count;			// output line counter
 	wxMutex m_lineLock;
+	const ILogPreferencesView* m_preferencesView;
 
 	/**
 	 * Write all waiting log info to the logfile
